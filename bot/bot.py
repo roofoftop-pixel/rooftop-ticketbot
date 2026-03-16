@@ -363,7 +363,7 @@ async def my_assigned(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
-def main():
+async def main():
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     app = Application.builder().token(token).build()
     conv = ConversationHandler(
@@ -387,8 +387,12 @@ def main():
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_set_severity, pattern=r"^setsev_"))
     app.add_handler(CallbackQueryHandler(handle_mod_action, pattern=r"^(take|resolve|unresolved|severity)_"))
+
     logger.info("🤖 Bot de tickets iniciado...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
+    async with app:
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
     import asyncio

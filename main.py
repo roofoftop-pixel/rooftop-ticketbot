@@ -1,16 +1,18 @@
 import os
 import sys
-import asyncio
 import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def run_bot():
     try:
+        import asyncio
         from bot.bot import main
         asyncio.run(main())
     except Exception as e:
+        import traceback
         print(f"Bot error: {e}")
+        traceback.print_exc()
 
 def run_web():
     from web.app import app
