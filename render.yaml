@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: rooftop-ticketbot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rooftop-tickets-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PANEL_PASSWORD
+        sync: false
+
+databases:
+  - name: rooftop-tickets-db
+    databaseName: tickets
+    user: ticketuser

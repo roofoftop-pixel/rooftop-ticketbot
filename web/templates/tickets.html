@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Tickets{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2 class="page-title">Tickets</h2>
+  <span class="page-sub">{{ total }} total</span>
+</div>
+
+<div class="filters">
+  <form method="GET" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <select name="project_id" onchange="this.form.submit()" style="min-width:140px;">
+      <option value="">Todos los proyectos</option>
+      {% for p in projects %}
+      <option value="{{ p.id }}" {% if project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+    <select name="status" onchange="this.form.submit()" style="min-width:130px;">
+      <option value="">Todos los estados</option>
+      <option value="open" {% if status=='open' %}selected{% endif %}>📬 Abierto</option>
+      <option value="in_progress" {% if status=='in_progress' %}selected{% endif %}>⚙️ En progreso</option>
+      <option value="resolved" {% if status=='resolved' %}selected{% endif %}>✅ Resuelto</option>
+      <option value="unresolved" {% if status=='unresolved' %}selected{% endif %}>❌ Sin solución</option>
+      <option value="closed" {% if status=='closed' %}selected{% endif %}>🔒 Cerrado</option>
+    </select>
+    {% if project_id or status %}
+    <a href="/tickets" class="btn btn-sm" style="color:var(--red); border-color:rgba(239,68,68,0.3)">✕ Limpiar</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if tickets %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Proyecto</th>
+        <th>Usuario</th>
+        <th>Categoría</th>
+        <th>Severidad</th>
+        <th>Estado</th>
+        <th>Mod asignado</th>
+        <th>Fecha</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for t in tickets %}
+    <tr style="cursor:pointer" onclick="location.href='/ticket/{{ t.id }}'">
+      <td class="tkt-id">#{{ t.ticket_id }}</td>
+      <td style="color:var(--gold)">{{ t.project_name or '—' }}</td>
+      <td style="color:var(--text-dim)">@{{ t.username or t.user_telegram_id }}</td>
+      <td>{{ t.category }}</td>
+      <td><span class="sev-dot sev-{{ t.severity }}"></span>{{ t.severity }}</td>
+      <td><span class="badge badge-{{ t.status }}">{{ t.status }}</span></td>
+      <td style="color:var(--text-dim)">{{ t.assigned_mod_username or '—' }}</td>
+      <td style="color:var(--text-dim); font-size:11px;">
+        {% if t.created_at %}{{ t.created_at.strftime('%d/%m %H:%M') }}{% else %}—{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="big">🎫</div>
+    <div>No hay tickets con estos filtros</div>
+  </div>
+  {% endif %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% for p in range(1, total_pages+1) %}
+  <a href="?page={{ p }}{% if project_id %}&project_id={{ project_id }}{% endif %}{% if status %}&status={{ status }}{% endif %}"
+     class="pag-btn {% if p == page %}active{% endif %}">{{ p }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

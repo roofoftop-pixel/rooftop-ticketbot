@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Ticket #{{ ticket.ticket_id }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <a href="/tickets" style="color:var(--text-dim); font-size:12px;">← Tickets</a>
+  <h2 class="page-title">Ticket #{{ ticket.ticket_id }}</h2>
+  <span class="badge badge-{{ ticket.status }}">{{ ticket.status }}</span>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 320px; gap:20px;">
+  <!-- LEFT -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+    <div class="card">
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Descripción</div>
+      <p style="line-height:1.7; color:var(--text);">{{ ticket.description }}</p>
+    </div>
+
+    {% if ticket.mod_response %}
+    <div class="card" style="border-color:rgba(201,168,76,0.3);">
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">🛡️ Respuesta del moderador</div>
+      <p style="line-height:1.7;">{{ ticket.mod_response }}</p>
+      <p style="color:var(--text-dim); font-size:11px; margin-top:8px;">— @{{ ticket.assigned_mod_username or 'mod' }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- RIGHT -->
+  <div style="display:flex; flex-direction:column; gap:16px;">
+    <div class="card">
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:16px;">Detalles</div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <div class="form-label">Proyecto</div>
+          <div style="color:var(--gold); font-weight:600;">{{ ticket.project_name or '—' }}</div>
+        </div>
+        <div>
+          <div class="form-label">Usuario</div>
+          <div>@{{ ticket.username or ticket.user_telegram_id }}</div>
+        </div>
+        <div>
+          <div class="form-label">Categoría</div>
+          <div>{{ ticket.category }}</div>
+        </div>
+        <div>
+          <div class="form-label">Severidad</div>
+          <div><span class="sev-dot sev-{{ ticket.severity }}"></span>{{ ticket.severity.upper() }}</div>
+        </div>
+        <div>
+          <div class="form-label">Mod asignado</div>
+          <div>{{ ticket.assigned_mod_username or 'Sin asignar' }}</div>
+        </div>
+        <div>
+          <div class="form-label">Creado</div>
+          <div style="font-size:11px; color:var(--text-dim);">
+            {% if ticket.created_at %}{{ ticket.created_at.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+          </div>
+        </div>
+        <div>
+          <div class="form-label">Actualizado</div>
+          <div style="font-size:11px; color:var(--text-dim);">
+            {% if ticket.updated_at %}{{ ticket.updated_at.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Acciones</div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Cambiar estado</label>
+          <select id="statusSelect" style="width:100%;">
+            <option value="open" {% if ticket.status=='open' %}selected{% endif %}>📬 Abierto</option>
+            <option value="in_progress" {% if ticket.status=='in_progress' %}selected{% endif %}>⚙️ En progreso</option>
+            <option value="resolved" {% if ticket.status=='resolved' %}selected{% endif %}>✅ Resuelto</option>
+            <option value="unresolved" {% if ticket.status=='unresolved' %}selected{% endif %}>❌ Sin solución</option>
+            <option value="closed" {% if ticket.status=='closed' %}selected{% endif %}>🔒 Cerrado</option>
+          </select>
+          <button class="btn btn-gold" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateStatus()">Actualizar estado</button>
+        </div>
+        <div class="form-group" style="margin-bottom:0; margin-top:8px;">
+          <label class="form-label">Cambiar severidad</label>
+          <select id="sevSelect" style="width:100%;">
+            <option value="low" {% if ticket.severity=='low' %}selected{% endif %}>🟢 Baja</option>
+            <option value="medium" {% if ticket.severity=='medium' %}selected{% endif %}>🟡 Media</option>
+            <option value="high" {% if ticket.severity=='high' %}selected{% endif %}>🟠 Alta</option>
+            <option value="critical" {% if ticket.severity=='critical' %}selected{% endif %}>🔴 Crítica</option>
+          </select>
+          <button class="btn" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateSeverity()">Actualizar severidad</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--gold); padding:12px 20px; border-radius:6px; font-size:12px; color:var(--gold); z-index:999;"></div>
+
+<script>
+const ticketId = {{ ticket.id }};
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2500);
+}
+async function updateStatus() {
+  const status = document.getElementById('statusSelect').value;
+  const res = await fetch(`/api/ticket/${ticketId}/status`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({status})
+  });
+  if ((await res.json()).ok) showToast('✅ Estado actualizado');
+}
+async function updateSeverity() {
+  const severity = document.getElementById('sevSelect').value;
+  const res = await fetch(`/api/ticket/${ticketId}/severity`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({severity})
+  });
+  if ((await res.json()).ok) showToast('✅ Severidad actualizada');
+}
+</script>
+{% endblock %}

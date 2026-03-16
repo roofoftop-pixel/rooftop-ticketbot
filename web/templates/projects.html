@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Proyectos{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2 class="page-title">Proyectos</h2>
+  <button class="btn btn-gold" onclick="openModal()">+ Nuevo proyecto</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if projects %}
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Group Chat ID</th>
+        <th>Staff Chat ID</th>
+        <th>Creado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for p in projects %}
+    <tr>
+      <td style="color:var(--text-dim)">#{{ p.id }}</td>
+      <td style="color:var(--gold); font-weight:600;">{{ p.name }}</td>
+      <td style="color:var(--text-dim); font-size:11px;">{{ p.group_chat_id or '—' }}</td>
+      <td style="color:var(--text-dim); font-size:11px;">{{ p.staff_chat_id or '—' }}</td>
+      <td style="color:var(--text-dim); font-size:11px;">
+        {% if p.created_at %}{{ p.created_at.strftime('%d/%m/%Y') }}{% else %}—{% endif %}
+      </td>
+      <td>
+        <button class="btn btn-sm" onclick="editProject({{ p.id }}, '{{ p.name }}', '{{ p.group_chat_id or '' }}', '{{ p.staff_chat_id or '' }}')">✏️ Editar</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteProject({{ p.id }}, '{{ p.name }}')">✕</button>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="big">📂</div>
+    <div style="margin-bottom:16px;">Sin proyectos. Creá el primero.</div>
+    <button class="btn btn-gold" onclick="openModal()">+ Crear proyecto</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Help -->
+<div class="card" style="margin-top:20px; border-color:rgba(201,168,76,0.2);">
+  <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:12px;">ℹ️ Cómo obtener los IDs de chat</div>
+  <div style="color:var(--text-dim); font-size:12px; line-height:1.8;">
+    <strong style="color:var(--text)">Group Chat ID:</strong> Agregá <code style="color:var(--gold)">@userinfobot</code> al grupo y enviá /start. Te dará el ID del grupo.<br>
+    <strong style="color:var(--text)">Staff Chat ID:</strong> Creá un grupo privado para los mods, agregá el bot y usá el mismo método.<br>
+    <strong style="color:var(--text)">Tip:</strong> Los IDs de grupos empiezan con <code style="color:var(--gold)">-100</code>. Incluí ese prefijo completo.
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="projectModal">
+  <div class="modal">
+    <h3 id="modalTitle">Nuevo proyecto</h3>
+    <input type="hidden" id="editId" value="" />
+    <div class="form-group">
+      <label class="form-label">Nombre del proyecto *</label>
+      <input type="text" id="projName" placeholder="Ej: MyToken" style="width:100%" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Group Chat ID</label>
+      <input type="text" id="projGroupId" placeholder="-1001234567890" style="width:100%" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Staff Chat ID</label>
+      <input type="text" id="projStaffId" placeholder="-1009876543210" style="width:100%" />
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-gold" onclick="saveProject()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--gold); padding:12px 20px; border-radius:6px; font-size:12px; color:var(--gold); z-index:999;"></div>
+
+<script>
+function showToast(msg, color='var(--gold)') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.color = color; t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; location.reload(); }, 1800);
+}
+function openModal() {
+  document.getElementById('modalTitle').textContent = 'Nuevo proyecto';
+  document.getElementById('editId').value = '';
+  document.getElementById('projName').value = '';
+  document.getElementById('projGroupId').value = '';
+  document.getElementById('projStaffId').value = '';
+  document.getElementById('projectModal').classList.add('open');
+}
+function editProject(id, name, groupId, staffId) {
+  document.getElementById('modalTitle').textContent = 'Editar proyecto';
+  document.getElementById('editId').value = id;
+  document.getElementById('projName').value = name;
+  document.getElementById('projGroupId').value = groupId;
+  document.getElementById('projStaffId').value = staffId;
+  document.getElementById('projectModal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('projectModal').classList.remove('open');
+}
+async function saveProject() {
+  const id = document.getElementById('editId').value;
+  const data = {
+    name: document.getElementById('projName').value,
+    group_chat_id: document.getElementById('projGroupId').value,
+    staff_chat_id: document.getElementById('projStaffId').value,
+  };
+  if (!data.name) { alert('El nombre es requerido.'); return; }
+  const url = id ? `/api/projects/${id}` : '/api/projects';
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if (res.ok) { closeModal(); showToast('✅ Proyecto guardado'); }
+}
+async function deleteProject(id, name) {
+  if (!confirm(`¿Eliminar proyecto "${name}"?`)) return;
+  const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+  if (res.ok) showToast('✅ Proyecto eliminado', 'var(--red)');
+}
+document.getElementById('projectModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+</script>
+{% endblock %}
