@@ -3,7 +3,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -32,7 +31,7 @@ def get_status_emoji(s):
 
 def format_ticket_card(ticket):
     mod = ticket.get("assigned_mod_username") or "Sin asignar"
-    created = ticket["created_at"].strftime("%d/%m/%Y %H:%M") if ticket.get("created_at") else "N/A"
+    created = ticket["created_at"][:16] if ticket.get("created_at") else "N/A"
     return (
         f"🎫 *Ticket #{ticket['ticket_id']}*\n"
         f"📁 Proyecto: `{ticket.get('project_name', 'N/A')}`\n"
@@ -364,9 +363,10 @@ async def my_assigned(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
-async def main():
+def main():
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     app = Application.builder().token(token).build()
+
     conv = ConversationHandler(
         entry_points=[CommandHandler("ticket", open_ticket_start)],
         states={
@@ -374,27 +374,23 @@ async def main():
             DESCRIPTION: [CallbackQueryHandler(category_selected, pattern=r"^cat_")],
             SEVERITY: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, description_received),
-                CallbackQueryHandler(severity_selected, pattern=r"^sev_"),
             ],
         },
         fallbacks=[CommandHandler("cancelar", cancel)],
-        per_message=False,
     )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("miticket", my_tickets))
     app.add_handler(CommandHandler("tickets", list_tickets))
     app.add_handler(CommandHandler("asignados", my_assigned))
     app.add_handler(CommandHandler("responder", reply_to_user))
     app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(severity_selected, pattern=r"^sev_"))
     app.add_handler(CallbackQueryHandler(handle_set_severity, pattern=r"^setsev_"))
     app.add_handler(CallbackQueryHandler(handle_mod_action, pattern=r"^(take|resolve|unresolved|severity)_"))
 
     logger.info("🤖 Bot de tickets iniciado...")
-    async with app:
-        await app.start()
-        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-        await asyncio.Event().wait()
+    app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
