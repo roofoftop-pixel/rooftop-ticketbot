@@ -27,7 +27,7 @@
       <td style="color:var(--text-dim); font-size:11px;">{{ p.group_chat_id or '—' }}</td>
       <td style="color:var(--text-dim); font-size:11px;">{{ p.staff_chat_id or '—' }}</td>
       <td style="color:var(--text-dim); font-size:11px;">
-        {% if p.created_at %}{{ p.created_at.strftime('%d/%m/%Y') }}{% else %}—{% endif %}
+        {% if p.created_at %}{{ p.created_at[:10] }}{% else %}—{% endif %}
       </td>
       <td>
         <button class="btn btn-sm" onclick="editProject({{ p.id }}, '{{ p.name }}', '{{ p.group_chat_id or '' }}', '{{ p.staff_chat_id or '' }}')">✏️ Editar</button>
