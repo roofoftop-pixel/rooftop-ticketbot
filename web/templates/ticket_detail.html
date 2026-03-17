@@ -11,13 +11,23 @@
   <!-- LEFT -->
   <div style="display:flex; flex-direction:column; gap:16px;">
     <div class="card">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Descripción</div>
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Description</div>
       <p style="line-height:1.7; color:var(--text);">{{ ticket.description }}</p>
+    </div>
+
+    <div class="card">
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Crypto Details</div>
+      <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
+        <div><span style="color:var(--text-dim);">👛 Wallet:</span> <code style="color:var(--gold);">{{ ticket.wallet_address or '—' }}</code></div>
+        <div><span style="color:var(--text-dim);">⛓️ Blockchain:</span> {{ ticket.blockchain or '—' }}</div>
+        <div><span style="color:var(--text-dim);">🔗 TX Hash:</span> <code style="color:var(--gold);">{{ ticket.tx_hash or '—' }}</code></div>
+        <div><span style="color:var(--text-dim);">🖼️ Screenshot:</span> {% if ticket.has_screenshot %}✅ Yes{% else %}❌ No{% endif %}</div>
+      </div>
     </div>
 
     {% if ticket.mod_response %}
     <div class="card" style="border-color:rgba(201,168,76,0.3);">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">🛡️ Respuesta del moderador</div>
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">🛡️ Mod response</div>
       <p style="line-height:1.7;">{{ ticket.mod_response }}</p>
       <p style="color:var(--text-dim); font-size:11px; margin-top:8px;">— @{{ ticket.assigned_mod_username or 'mod' }}</p>
     </div>
@@ -27,66 +37,65 @@
   <!-- RIGHT -->
   <div style="display:flex; flex-direction:column; gap:16px;">
     <div class="card">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:16px;">Detalles</div>
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:16px;">Details</div>
       <div style="display:flex; flex-direction:column; gap:12px;">
         <div>
-          <div class="form-label">Proyecto</div>
+          <div class="form-label">Project</div>
           <div style="color:var(--gold); font-weight:600;">{{ ticket.project_name or '—' }}</div>
         </div>
         <div>
-          <div class="form-label">Usuario</div>
+          <div class="form-label">User</div>
           <div>@{{ ticket.username or ticket.user_telegram_id }}</div>
         </div>
         <div>
-          <div class="form-label">Categoría</div>
-          <div>{{ ticket.category }}</div>
-        </div>
-        <div>
-          <div class="form-label">Severidad</div>
-          <div><span class="sev-dot sev-{{ ticket.severity }}"></span>{{ ticket.severity.upper() }}</div>
-        </div>
-        <div>
-          <div class="form-label">Mod asignado</div>
-          <div>{{ ticket.assigned_mod_username or 'Sin asignar' }}</div>
-        </div>
-        <div>
-          <div class="form-label">Creado</div>
-          <div style="font-size:11px; color:var(--text-dim);">
-            {% if ticket.created_at %}{{ ticket.created_at.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+          <div class="form-label">Severity</div>
+          <div>
+            {% if ticket.severity %}
+              <span class="sev-dot sev-{{ ticket.severity }}"></span>{{ ticket.severity | upper }}
+            {% else %}
+              <span style="color:var(--text-dim)">not set</span>
+            {% endif %}
           </div>
         </div>
         <div>
-          <div class="form-label">Actualizado</div>
-          <div style="font-size:11px; color:var(--text-dim);">
-            {% if ticket.updated_at %}{{ ticket.updated_at.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
-          </div>
+          <div class="form-label">Assigned mod</div>
+          <div>{{ ticket.assigned_mod_username or 'Unassigned' }}</div>
+        </div>
+        <div>
+          <div class="form-label">Created</div>
+          <div style="font-size:11px; color:var(--text-dim);">{{ ticket.created_at[:16] if ticket.created_at else '—' }}</div>
+        </div>
+        <div>
+          <div class="form-label">Updated</div>
+          <div style="font-size:11px; color:var(--text-dim);">{{ ticket.updated_at[:16] if ticket.updated_at else '—' }}</div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Acciones</div>
+      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Actions</div>
       <div style="display:flex; flex-direction:column; gap:8px;">
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Cambiar estado</label>
+          <label class="form-label">Change status</label>
           <select id="statusSelect" style="width:100%;">
-            <option value="open" {% if ticket.status=='open' %}selected{% endif %}>📬 Abierto</option>
-            <option value="in_progress" {% if ticket.status=='in_progress' %}selected{% endif %}>⚙️ En progreso</option>
-            <option value="resolved" {% if ticket.status=='resolved' %}selected{% endif %}>✅ Resuelto</option>
-            <option value="unresolved" {% if ticket.status=='unresolved' %}selected{% endif %}>❌ Sin solución</option>
-            <option value="closed" {% if ticket.status=='closed' %}selected{% endif %}>🔒 Cerrado</option>
+            <option value="open" {% if ticket.status=='open' %}selected{% endif %}>📬 Open</option>
+            <option value="in_progress" {% if ticket.status=='in_progress' %}selected{% endif %}>⚙️ In progress</option>
+            <option value="resolved" {% if ticket.status=='resolved' %}selected{% endif %}>✅ Resolved</option>
+            <option value="unresolved" {% if ticket.status=='unresolved' %}selected{% endif %}>❌ No solution</option>
+            <option value="closed" {% if ticket.status=='closed' %}selected{% endif %}>🔒 Closed</option>
           </select>
-          <button class="btn btn-gold" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateStatus()">Actualizar estado</button>
+          <button class="btn btn-gold" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateStatus()">Update status</button>
         </div>
         <div class="form-group" style="margin-bottom:0; margin-top:8px;">
-          <label class="form-label">Cambiar severidad</label>
+          <label class="form-label">Change severity</label>
           <select id="sevSelect" style="width:100%;">
-            <option value="low" {% if ticket.severity=='low' %}selected{% endif %}>🟢 Baja</option>
-            <option value="medium" {% if ticket.severity=='medium' %}selected{% endif %}>🟡 Media</option>
-            <option value="high" {% if ticket.severity=='high' %}selected{% endif %}>🟠 Alta</option>
-            <option value="critical" {% if ticket.severity=='critical' %}selected{% endif %}>🔴 Crítica</option>
+            <option value="" {% if not ticket.severity %}selected{% endif %}>— not set —</option>
+            <option value="low" {% if ticket.severity=='low' %}selected{% endif %}>🟢 Low</option>
+            <option value="medium" {% if ticket.severity=='medium' %}selected{% endif %}>🟡 Medium</option>
+            <option value="high" {% if ticket.severity=='high' %}selected{% endif %}>🟠 High</option>
+            <option value="critical" {% if ticket.severity=='critical' %}selected{% endif %}>🔴 Critical</option>
           </select>
-          <button class="btn" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateSeverity()">Actualizar severidad</button>
+          <button class="btn" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateSeverity()">Update severity</button>
         </div>
       </div>
     </div>
@@ -108,15 +117,16 @@ async function updateStatus() {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({status})
   });
-  if ((await res.json()).ok) showToast('✅ Estado actualizado');
+  if ((await res.json()).ok) showToast('✅ Status updated');
 }
 async function updateSeverity() {
   const severity = document.getElementById('sevSelect').value;
+  if (!severity) { showToast('⚠️ Select a severity first'); return; }
   const res = await fetch(`/api/ticket/${ticketId}/severity`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({severity})
   });
-  if ((await res.json()).ok) showToast('✅ Severidad actualizada');
+  if ((await res.json()).ok) showToast('✅ Severity updated');
 }
 </script>
 {% endblock %}

@@ -8,9 +8,11 @@ services:
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
-      - key: DATABASE_URL
-        sync: false
       - key: PANEL_PASSWORD
         sync: false
       - key: SECRET_KEY
         sync: false
+      - key: DB_PATH
+        value: /var/data/tickets.db
+      - key: PORT
+        value: 10000

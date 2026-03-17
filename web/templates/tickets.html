@@ -9,21 +9,21 @@
 <div class="filters">
   <form method="GET" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
     <select name="project_id" onchange="this.form.submit()" style="min-width:140px;">
-      <option value="">Todos los proyectos</option>
+      <option value="">All projects</option>
       {% for p in projects %}
       <option value="{{ p.id }}" {% if project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
       {% endfor %}
     </select>
     <select name="status" onchange="this.form.submit()" style="min-width:130px;">
-      <option value="">Todos los estados</option>
-      <option value="open" {% if status=='open' %}selected{% endif %}>📬 Abierto</option>
-      <option value="in_progress" {% if status=='in_progress' %}selected{% endif %}>⚙️ En progreso</option>
-      <option value="resolved" {% if status=='resolved' %}selected{% endif %}>✅ Resuelto</option>
-      <option value="unresolved" {% if status=='unresolved' %}selected{% endif %}>❌ Sin solución</option>
-      <option value="closed" {% if status=='closed' %}selected{% endif %}>🔒 Cerrado</option>
+      <option value="">All statuses</option>
+      <option value="open" {% if status=='open' %}selected{% endif %}>📬 Open</option>
+      <option value="in_progress" {% if status=='in_progress' %}selected{% endif %}>⚙️ In progress</option>
+      <option value="resolved" {% if status=='resolved' %}selected{% endif %}>✅ Resolved</option>
+      <option value="unresolved" {% if status=='unresolved' %}selected{% endif %}>❌ No solution</option>
+      <option value="closed" {% if status=='closed' %}selected{% endif %}>🔒 Closed</option>
     </select>
     {% if project_id or status %}
-    <a href="/tickets" class="btn btn-sm" style="color:var(--red); border-color:rgba(239,68,68,0.3)">✕ Limpiar</a>
+    <a href="/tickets" class="btn btn-sm" style="color:var(--red); border-color:rgba(239,68,68,0.3)">✕ Clear</a>
     {% endif %}
   </form>
 </div>
@@ -36,11 +36,10 @@
         <th>ID</th>
         <th>Proyecto</th>
         <th>Usuario</th>
-        <th>Categoría</th>
-        <th>Severidad</th>
-        <th>Estado</th>
-        <th>Mod asignado</th>
-        <th>Fecha</th>
+        <th>Severity</th>
+        <th>Status</th>
+        <th>Assigned mod</th>
+        <th>Date</th>
       </tr>
     </thead>
     <tbody>
@@ -49,13 +48,10 @@
       <td class="tkt-id">#{{ t.ticket_id }}</td>
       <td style="color:var(--gold)">{{ t.project_name or '—' }}</td>
       <td style="color:var(--text-dim)">@{{ t.username or t.user_telegram_id }}</td>
-      <td>{{ t.category }}</td>
-      <td><span class="sev-dot sev-{{ t.severity }}"></span>{{ t.severity }}</td>
+      <td><span class="sev-dot sev-{{ t.severity or 'none' }}"></span>{{ t.severity or '—' }}</td>
       <td><span class="badge badge-{{ t.status }}">{{ t.status }}</span></td>
       <td style="color:var(--text-dim)">{{ t.assigned_mod_username or '—' }}</td>
-      <td style="color:var(--text-dim); font-size:11px;">
-        {% if t.created_at %}{{ t.created_at.strftime('%d/%m %H:%M') }}{% else %}—{% endif %}
-      </td>
+      <td style="color:var(--text-dim); font-size:11px;">{{ t.created_at[:16] if t.created_at else '—' }}</td>
     </tr>
     {% endfor %}
     </tbody>
@@ -63,7 +59,7 @@
   {% else %}
   <div class="empty-state">
     <div class="big">🎫</div>
-    <div>No hay tickets con estos filtros</div>
+    <div>No tickets match these filters</div>
   </div>
   {% endif %}
 </div>

@@ -12,29 +12,29 @@
     <div class="stat-value" style="color:var(--text)">{{ stats.total or 0 }}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Abiertos</div>
+    <div class="stat-label">Open</div>
     <div class="stat-value" style="color:var(--blue)">{{ stats.open_count or 0 }}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">En progreso</div>
+    <div class="stat-label">In progress</div>
     <div class="stat-value" style="color:var(--yellow)">{{ stats.in_progress_count or 0 }}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Resueltos</div>
+    <div class="stat-label">Resolved</div>
     <div class="stat-value" style="color:var(--green)">{{ stats.resolved_count or 0 }}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Sin solución</div>
+    <div class="stat-label">No solution</div>
     <div class="stat-value" style="color:var(--red)">{{ stats.unresolved_count or 0 }}</div>
   </div>
 </div>
 
 <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px;">
   <div class="card">
-    <div style="font-family:var(--font-display); font-size:13px; font-weight:700; margin-bottom:16px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Proyectos activos</div>
+    <div style="font-family:var(--font-display); font-size:13px; font-weight:700; margin-bottom:16px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Active projects</div>
     {% if projects %}
     <table>
-      <thead><tr><th>Proyecto</th><th>Group ID</th><th>Staff ID</th></tr></thead>
+      <thead><tr><th>Project</th><th>Group ID</th><th>Staff ID</th></tr></thead>
       <tbody>
       {% for p in projects %}
       <tr>
@@ -49,23 +49,23 @@
     <div class="empty-state">
       <div class="big">📂</div>
       <div>Sin proyectos configurados</div>
-      <a href="/projects" class="btn btn-gold" style="margin-top:12px; display:inline-flex;">+ Crear proyecto</a>
+      <a href="/projects" class="btn btn-gold" style="margin-top:12px; display:inline-flex;">+ Create project</a>
     </div>
     {% endif %}
   </div>
 
   <div class="card">
-    <div style="font-family:var(--font-display); font-size:13px; font-weight:700; margin-bottom:16px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Tickets recientes</div>
+    <div style="font-family:var(--font-display); font-size:13px; font-weight:700; margin-bottom:16px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Recent tickets</div>
     {% if recent_tickets %}
     <table>
-      <thead><tr><th>ID</th><th>Proyecto</th><th>Estado</th><th>Sev</th></tr></thead>
+      <thead><tr><th>ID</th><th>Project</th><th>Status</th><th>Sev</th></tr></thead>
       <tbody>
       {% for t in recent_tickets %}
       <tr style="cursor:pointer" onclick="location.href='/ticket/{{ t.id }}'">
         <td class="tkt-id">#{{ t.ticket_id }}</td>
         <td>{{ t.project_name or '—' }}</td>
         <td><span class="badge badge-{{ t.status }}">{{ t.status }}</span></td>
-        <td><span class="sev-dot sev-{{ t.severity }}"></span>{{ t.severity }}</td>
+        <td><span class="sev-dot sev-{{ t.severity or 'none' }}"></span>{{ t.severity or '—' }}</td>
       </tr>
       {% endfor %}
       </tbody>
