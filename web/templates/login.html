@@ -3,7 +3,10 @@
 <!DOCTYPE html>
 <html data-theme="dark">
 <head>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@400;800&display=swap" rel="stylesheet"/>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sign in — Support Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <script>
   (function() {
     const t = localStorage.getItem('theme') || 'dark';
@@ -11,52 +14,173 @@
   })();
 </script>
 <style>
-  [data-theme="dark"]  { --bg:#0a0a0a; --surface:#111; --border:#2a2a2a; --text:#e8e8e8; --text-dim:#666; --input-bg:#1a1a1a; }
-  [data-theme="light"] { --bg:#f4f4f5; --surface:#ffffff; --border:#d4d4d8; --text:#18181b; --text-dim:#71717a; --input-bg:#f0f0f1; }
-  :root { --accent: #c9a84c; --red: #ef4444; }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; min-height:100vh; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
-  .login-wrap { width:360px; }
-  .login-logo { text-align:center; margin-bottom:32px; }
-  .login-logo h1 { font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:var(--accent); letter-spacing:0.05em; }
-  .login-logo p { color:var(--text-dim); font-size:12px; margin-top:6px; }
-  .login-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:32px; }
-  .login-card h2 { font-family:'Syne',sans-serif; font-size:16px; font-weight:700; margin-bottom:24px; color:var(--text); }
-  .form-label { display:block; margin-bottom:6px; color:var(--text-dim); font-size:11px; text-transform:uppercase; letter-spacing:0.08em; }
-  input { width:100%; background:var(--input-bg); border:1px solid var(--border); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:13px; padding:10px 14px; border-radius:4px; outline:none; transition:border-color 0.15s; }
-  input:focus { border-color:var(--accent); }
-  .form-group { margin-bottom:20px; }
-  .btn-login { width:100%; padding:11px; background:var(--accent); color:#000; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; border:none; border-radius:4px; cursor:pointer; letter-spacing:0.05em; transition:opacity 0.15s; }
-  .btn-login:hover { opacity:0.88; }
-  .error { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:var(--red); padding:10px 14px; border-radius:4px; font-size:12px; margin-bottom:16px; }
-  .grid-bg { position:fixed; inset:0; z-index:-1; background-image:linear-gradient(rgba(201,168,76,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(201,168,76,0.025) 1px, transparent 1px); background-size:40px 40px; }
-  .theme-btn { position:fixed; top:16px; right:16px; background:var(--surface); border:1px solid var(--border); color:var(--text-dim); font-family:'IBM Plex Mono',monospace; font-size:11px; padding:6px 12px; border-radius:4px; cursor:pointer; }
-  .theme-btn:hover { color:var(--accent); border-color:var(--accent); }
+  [data-theme="dark"]  { --bg:#111111; --surface:#1a1a1a; --border:#2a2a2a; --text:#e8e8e8; --text-dim:#888; --text-xdim:#555; --input-bg:#222; }
+  [data-theme="light"] { --bg:#f9fafb; --surface:#ffffff; --border:#e5e7eb; --text:#111827; --text-dim:#6b7280; --text-xdim:#9ca3af; --input-bg:#f3f4f6; }
+  :root { --accent: #c9a84c; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Geist', 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s, color 0.2s;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* subtle grid */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(201,168,76,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(201,168,76,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  .login-wrap {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 360px;
+    padding: 20px;
+  }
+
+  .login-logo {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .login-logo-icon {
+    width: 44px; height: 44px;
+    background: rgba(201,168,76,0.1);
+    border: 1px solid rgba(201,168,76,0.25);
+    border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    margin-bottom: 14px;
+  }
+  .login-logo h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .login-logo p {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  }
+  .login-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 22px;
+  }
+
+  .form-label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+  .form-group { margin-bottom: 18px; }
+  input {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 9px 12px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.12s;
+  }
+  input::placeholder { color: var(--text-xdim); }
+  input:focus { border-color: var(--accent); }
+
+  .btn-login {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent);
+    color: #000;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-login:hover { opacity: 0.88; }
+
+  .error {
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.2);
+    color: #f87171;
+    padding: 9px 13px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+
+  .hint {
+    font-size: 11px;
+    color: var(--text-xdim);
+    margin-top: 3px;
+  }
+
+  .theme-btn {
+    position: fixed; top: 16px; right: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 6px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    z-index: 10;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  .theme-btn:hover { color: var(--accent); border-color: var(--accent); }
 </style>
 </head>
 <body>
-<div class="grid-bg"></div>
 <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀ Light</button>
 <div class="login-wrap">
   <div class="login-logo">
-    <h1>🎫 ROOF OF TOP</h1>
+    <div class="login-logo-icon">🎫</div>
+    <h1>Roof of Top</h1>
     <p>Support Panel</p>
   </div>
   <div class="login-card">
-    <h2>Sign in</h2>
+    <div class="login-card-title">Sign in</div>
     {% if error %}
     <div class="error">{{ error }}</div>
     {% endif %}
     <form method="POST">
       <div class="form-group">
-        <label class="form-label">Username <span style="color:var(--text-dim); font-weight:400">(leave blank if you are admin)</span></label>
-        <input type="text" name="username" placeholder="username" autocomplete="username" />
+        <label class="form-label">Username</label>
+        <input type="text" name="username" placeholder="Leave blank if admin" autocomplete="username" />
+        <div class="hint">Leave blank to sign in as admin</div>
       </div>
       <div class="form-group">
         <label class="form-label">Password</label>
         <input type="password" name="password" placeholder="••••••••" autofocus autocomplete="current-password" />
       </div>
-      <button type="submit" class="btn-login">SIGN IN →</button>
+      <button type="submit" class="btn-login">Sign in →</button>
     </form>
   </div>
 </div>
@@ -70,8 +194,7 @@ function toggleTheme() {
 }
 (function() {
   const t = localStorage.getItem('theme') || 'dark';
-  const btn = document.getElementById('themeBtn');
-  if (btn) btn.textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
+  document.getElementById('themeBtn').textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
 })();
 </script>
 </body>

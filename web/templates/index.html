@@ -24,7 +24,7 @@
 </div>
 
 <div style="margin-bottom:28px;">
-  <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; margin-bottom:16px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Active Projects</div>
+  <div style="font-family:inherit; font-size:11px; font-weight:700; margin-bottom:16px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Active Projects</div>
   {% if projects %}
   <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px;">
     {% for p in projects %}
@@ -36,13 +36,13 @@
           {% if p.logo_url %}
             <img src="{{ p.logo_url }}" style="height:20px; width:20px; object-fit:cover; border-radius:3px;" onerror="this.style.display='none'" />
           {% endif %}
-          <span style="font-family:'Syne',sans-serif; font-weight:700; font-size:13px; color:{{ p.primary_color or 'var(--accent)' }};">
+          <span style="font-family:inherit; font-weight:700; font-size:13px; color:{{ p.primary_color or 'var(--accent)' }};">
             {{ p.site_name or p.name }}
           </span>
         </div>
         <div style="font-size:10px; color:var(--text-dim);">{{ p.name }}</div>
         {% if p.group_chat_id %}
-        <div style="font-size:10px; color:var(--text-dim); margin-top:4px; font-family:'IBM Plex Mono',monospace;">{{ p.group_chat_id }}</div>
+        <div style="font-size:10px; color:var(--text-dim); margin-top:4px; font-family:inherit;">{{ p.group_chat_id }}</div>
         {% endif %}
         <div style="margin-top:10px; font-size:10px; color:var(--accent); letter-spacing:0.05em;">View details →</div>
       </div>
@@ -67,7 +67,7 @@
 <!-- Support Messages preview -->
 <div class="card" style="padding:0; overflow:hidden;">
   <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-    <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Recent Support Messages</div>
+    <div style="font-family:inherit; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Recent Support Messages</div>
     <a href="/support" class="btn btn-sm">View all →</a>
   </div>
   {% if recent_support %}
@@ -112,7 +112,7 @@
 </div>
 
 <div class="card">
-  <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; margin-bottom:16px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Recent Tickets</div>
+  <div style="font-family:inherit; font-size:11px; font-weight:700; margin-bottom:16px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Recent Tickets</div>
   {% if recent_tickets %}
   <table>
     <thead><tr><th>ID</th><th>User</th><th>Status</th><th>Sev</th><th>Date</th></tr></thead>

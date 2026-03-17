@@ -11,7 +11,7 @@
   <!-- New Message Form -->
   <div>
     <div class="card">
-      <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:16px;">New Message</div>
+      <div style="font-family:inherit; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:16px;">New Message</div>
       <div class="form-group">
         <label class="form-label">Message</label>
         <textarea id="msgInput" rows="4" placeholder="Describe your issue or question..." style="width:100%; resize:vertical;"></textarea>
@@ -39,7 +39,7 @@
   <!-- My Previous Threads -->
   <div>
     <div class="card" style="padding:0; overflow:hidden;">
-      <div style="padding:14px 16px; border-bottom:1px solid var(--border); font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">
+      <div style="padding:14px 16px; border-bottom:1px solid var(--border); font-family:inherit; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">
         Previous Messages
       </div>
       {% if my_threads %}
@@ -69,7 +69,7 @@
 <div class="modal-overlay" id="threadModal">
   <div class="modal" style="width:560px; max-height:80vh; display:flex; flex-direction:column; padding:0;">
     <div style="padding:20px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
-      <h3 style="font-family:'Syne',sans-serif; font-size:15px; font-weight:700; margin:0;">Thread</h3>
+      <h3 style="font-family:inherit; font-size:15px; font-weight:700; margin:0;">Thread</h3>
       <button onclick="closeThreadModal()" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:18px;">✕</button>
     </div>
     <div id="modalMessages" style="flex:1; overflow-y:auto; padding:20px 24px; display:flex; flex-direction:column; gap:12px; min-height:200px;">

@@ -45,7 +45,7 @@
   <div>
     <div class="card" style="padding:0; overflow:hidden;">
       <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-        <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Recent Tickets</div>
+        <div style="font-family:inherit; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Recent Tickets</div>
         <a href="/tickets?project_id={{ project.id }}" class="btn btn-sm">View all →</a>
       </div>
       {% if recent_tickets %}
@@ -77,7 +77,7 @@
   <div>
     <div class="card" style="padding:0; overflow:hidden;">
       <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-        <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Members</div>
+        <div style="font-family:inherit; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Members</div>
         {% if can_manage %}
         <button class="btn btn-sm btn-accent" onclick="openAddMember()">+ Add</button>
         {% endif %}
@@ -111,7 +111,7 @@
     {% if is_admin %}
     <!-- Project info card -->
     <div class="card" style="margin-top:16px;">
-      <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:12px;">Project Info</div>
+      <div style="font-family:inherit; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:12px;">Project Info</div>
       <div style="font-size:12px; display:flex; flex-direction:column; gap:8px; color:var(--text-dim);">
         <div><span>Group ID:</span> <code style="color:var(--text);">{{ project.group_chat_id or '—' }}</code></div>
         <div><span>Color:</span>
