@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2 class="page-title">Usuarios web</h2>
+  <button class="btn btn-gold" onclick="openModal()">+ Nuevo usuario</button>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden; margin-bottom:20px;">
+  {% if web_users %}
+  <table>
+    <thead>
+      <tr>
+        <th>Usuario</th>
+        <th>Rol</th>
+        <th>Proyectos asignados</th>
+        <th>Creado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for u in web_users %}
+    <tr>
+      <td style="font-weight:600; color:var(--text);">{{ u.username }}</td>
+      <td>
+        {% if u.role == 'admin' %}
+          <span class="badge" style="background:rgba(201,168,76,0.15); color:var(--gold); border:1px solid rgba(201,168,76,0.3);">★ admin</span>
+        {% else %}
+          <span class="badge badge-in_progress">viewer</span>
+        {% endif %}
+      </td>
+      <td style="color:var(--text-dim); font-size:11px;">
+        {% if u.project_ids %}
+          {% for pid in u.project_ids.split(',') if pid.strip() %}
+            {% for p in projects if p.id == pid|int %}
+              <span style="background:var(--surface2); border:1px solid var(--border); padding:2px 6px; border-radius:3px; margin-right:4px;">{{ p.name }}</span>
+            {% endfor %}
+          {% endfor %}
+        {% else %}
+          <span style="color:var(--text-dim);">—</span>
+        {% endif %}
+      </td>
+      <td style="color:var(--text-dim); font-size:11px;">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+      <td>
+        <button class="btn btn-sm" onclick="editPassword({{ u.id }}, '{{ u.username }}')">🔑 Contraseña</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteUser({{ u.id }}, '{{ u.username }}')">✕</button>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="big">👤</div>
+    <div style="margin-bottom:16px;">Sin usuarios. Creá el primero.</div>
+    <button class="btn btn-gold" onclick="openModal()">+ Crear usuario</button>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" style="border-color:rgba(201,168,76,0.2);">
+  <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:12px;">ℹ️ Cómo funciona</div>
+  <div style="color:var(--text-dim); font-size:12px; line-height:1.9;">
+    <strong style="color:var(--text)">Admin:</strong> acceso total — ve todos los tickets, proyectos y usuarios.<br>
+    <strong style="color:var(--text)">Viewer:</strong> solo ve los tickets de los proyectos que le asignaste.<br>
+    <strong style="color:var(--text)">Proyectos:</strong> ingresá los IDs separados por coma, ej: <code style="color:var(--gold)">1,3</code>.<br>
+    <strong style="color:var(--text)">Login viewer:</strong> el usuario ingresa con su nombre de usuario + contraseña.
+  </div>
+</div>
+
+<!-- Modal crear usuario -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <h3 id="modalTitle">Nuevo usuario</h3>
+    <div class="form-group">
+      <label class="form-label">Usuario *</label>
+      <input type="text" id="uUsername" placeholder="ej: dueño_proyecto" style="width:100%" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Contraseña *</label>
+      <input type="password" id="uPassword" placeholder="••••••••" style="width:100%" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Rol</label>
+      <select id="uRole" style="width:100%">
+        <option value="viewer">Viewer (dueño de proyecto)</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">IDs de proyectos <span style="color:var(--text-dim)">(separados por coma)</span></label>
+      <input type="text" id="uProjectIds" placeholder="ej: 1,2,3" style="width:100%" />
+      <div style="margin-top:8px; font-size:11px; color:var(--text-dim);">
+        Proyectos disponibles:
+        {% for p in projects %}
+          <span style="margin-right:8px; color:var(--gold)">{{ p.id }}: {{ p.name }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-gold" onclick="saveUser()">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal cambiar contraseña -->
+<div class="modal-overlay" id="pwModal">
+  <div class="modal">
+    <h3 id="pwModalTitle">Cambiar contraseña</h3>
+    <input type="hidden" id="pwUserId" />
+    <div class="form-group">
+      <label class="form-label">Nueva contraseña *</label>
+      <input type="password" id="newPassword" placeholder="••••••••" style="width:100%" />
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn" onclick="closePwModal()">Cancelar</button>
+      <button class="btn btn-gold" onclick="savePassword()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--gold); padding:12px 20px; border-radius:6px; font-size:12px; color:var(--gold); z-index:999;"></div>
+
+<script>
+function showToast(msg, color='var(--gold)') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.color = color; t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; location.reload(); }, 1800);
+}
+function openModal() { document.getElementById('userModal').classList.add('open'); }
+function closeModal() { document.getElementById('userModal').classList.remove('open'); }
+function closePwModal() { document.getElementById('pwModal').classList.remove('open'); }
+
+function editPassword(id, name) {
+  document.getElementById('pwUserId').value = id;
+  document.getElementById('pwModalTitle').textContent = `Cambiar contraseña — ${name}`;
+  document.getElementById('newPassword').value = '';
+  document.getElementById('pwModal').classList.add('open');
+}
+
+async function saveUser() {
+  const data = {
+    username: document.getElementById('uUsername').value.trim(),
+    password: document.getElementById('uPassword').value,
+    role: document.getElementById('uRole').value,
+    project_ids: document.getElementById('uProjectIds').value.trim(),
+  };
+  if (!data.username || !data.password) { alert('Usuario y contraseña son requeridos.'); return; }
+  const res = await fetch('/api/users', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+  });
+  const d = await res.json();
+  if (d.ok) { closeModal(); showToast('✅ Usuario creado'); }
+  else showToast('⚠️ ' + (d.error || 'Error'), 'var(--red)');
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`¿Eliminar usuario "${name}"?`)) return;
+  const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+  if ((await res.json()).ok) showToast('✅ Usuario eliminado', 'var(--red)');
+}
+
+async function savePassword() {
+  const id = document.getElementById('pwUserId').value;
+  const password = document.getElementById('newPassword').value;
+  if (!password) { alert('La contraseña no puede estar vacía.'); return; }
+  const res = await fetch(`/api/users/${id}/password`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({password})
+  });
+  if ((await res.json()).ok) { closePwModal(); showToast('✅ Contraseña actualizada'); }
+}
+
+document.getElementById('userModal').addEventListener('click', e => { if(e.target===document.getElementById('userModal')) closeModal(); });
+document.getElementById('pwModal').addEventListener('click', e => { if(e.target===document.getElementById('pwModal')) closePwModal(); });
+</script>
+{% endblock %}

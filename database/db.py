@@ -2,6 +2,7 @@ import sqlite3
 import os
 import random
 import string
+import hashlib
 
 DB_PATH = os.environ.get("DB_PATH", "tickets.db")
 
@@ -15,6 +16,10 @@ def get_connection():
 def generate_ticket_id():
     suffix = "".join(random.choices(string.digits, k=4))
     return f"TKT-{suffix}"
+
+
+def hash_password(pw):
+    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
 
 class Database:
@@ -42,6 +47,8 @@ class Database:
                 blockchain TEXT,
                 tx_hash TEXT,
                 has_screenshot INTEGER DEFAULT 0,
+                screenshot_file_id TEXT,
+                staff_message_id INTEGER,
                 severity TEXT,
                 status TEXT DEFAULT 'open',
                 assigned_mod_id TEXT,
@@ -59,8 +66,26 @@ class Database:
                 message TEXT NOT NULL,
                 created_at TEXT DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS web_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'viewer',
+                project_ids TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now'))
+            );
         """)
         conn.commit()
+        # Migrations for columns added after initial deploy
+        for sql in [
+            "ALTER TABLE tickets ADD COLUMN screenshot_file_id TEXT",
+            "ALTER TABLE tickets ADD COLUMN staff_message_id INTEGER",
+        ]:
+            try:
+                conn.execute(sql)
+                conn.commit()
+            except Exception:
+                pass
         conn.close()
 
     # ── PROJECTS ──────────────────────────────────────────────────────────────
@@ -131,6 +156,7 @@ class Database:
         blockchain=None,
         tx_hash=None,
         has_screenshot=False,
+        screenshot_file_id=None,
     ):
         conn = get_connection()
         ticket_id = generate_ticket_id()
@@ -141,18 +167,13 @@ class Database:
         cur = conn.execute(
             """INSERT INTO tickets
                (ticket_id, project_id, user_telegram_id, username,
-                description, wallet_address, blockchain, tx_hash, has_screenshot)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                description, wallet_address, blockchain, tx_hash,
+                has_screenshot, screenshot_file_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                ticket_id,
-                project_id,
-                user_telegram_id,
-                username,
-                description,
-                wallet_address,
-                blockchain,
-                tx_hash,
-                1 if has_screenshot else 0,
+                ticket_id, project_id, user_telegram_id, username,
+                description, wallet_address, blockchain, tx_hash,
+                1 if has_screenshot else 0, screenshot_file_id,
             ),
         )
         conn.commit()
@@ -162,6 +183,15 @@ class Database:
         project = self.get_project(project_id)
         ticket["project_name"] = project["name"] if project else "Unknown"
         return ticket
+
+    def save_staff_message_id(self, ticket_db_id, message_id):
+        conn = get_connection()
+        conn.execute(
+            "UPDATE tickets SET staff_message_id = ? WHERE id = ?",
+            (message_id, ticket_db_id),
+        )
+        conn.commit()
+        conn.close()
 
     def get_ticket_by_db_id(self, db_id):
         conn = get_connection()
@@ -196,6 +226,18 @@ class Database:
         ).fetchall()
         conn.close()
         return [dict(r) for r in rows]
+
+    def get_active_ticket_for_user(self, user_telegram_id):
+        conn = get_connection()
+        row = conn.execute(
+            """SELECT t.*, p.name as project_name, p.staff_chat_id
+               FROM tickets t LEFT JOIN projects p ON t.project_id = p.id
+               WHERE t.user_telegram_id = ? AND t.status IN ('open','in_progress')
+               ORDER BY t.created_at DESC LIMIT 1""",
+            (user_telegram_id,),
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
 
     def get_open_tickets(self, project_id=None):
         conn = get_connection()
@@ -270,17 +312,23 @@ class Database:
         conn.commit()
         conn.close()
 
-    def get_active_ticket_for_user(self, user_telegram_id):
+    def add_mod_response(self, ticket_db_id, mod_id, mod_username, message):
         conn = get_connection()
-        row = conn.execute(
-            """SELECT t.*, p.name as project_name, p.staff_chat_id
-               FROM tickets t LEFT JOIN projects p ON t.project_id = p.id
-               WHERE t.user_telegram_id = ? AND t.status IN ('open','in_progress')
-               ORDER BY t.created_at DESC LIMIT 1""",
-            (user_telegram_id,),
-        ).fetchone()
+        conn.execute(
+            """UPDATE tickets
+               SET mod_response=?, assigned_mod_id=?, assigned_mod_username=?,
+                   updated_at=datetime('now')
+               WHERE id=?""",
+            (message, mod_id, mod_username, ticket_db_id),
+        )
+        conn.execute(
+            """INSERT INTO ticket_messages
+               (ticket_id, sender_type, sender_id, sender_username, message)
+               VALUES (?, 'mod', ?, ?, ?)""",
+            (ticket_db_id, mod_id, mod_username, message),
+        )
+        conn.commit()
         conn.close()
-        return dict(row) if row else None
 
     def add_message(self, ticket_db_id, sender_type, sender_id, sender_username, message):
         conn = get_connection()
@@ -306,24 +354,6 @@ class Database:
         conn.close()
         return [dict(r) for r in rows]
 
-    def add_mod_response(self, ticket_db_id, mod_id, mod_username, message):
-        conn = get_connection()
-        conn.execute(
-            """UPDATE tickets
-               SET mod_response=?, assigned_mod_id=?, assigned_mod_username=?,
-                   updated_at=datetime('now')
-               WHERE id=?""",
-            (message, mod_id, mod_username, ticket_db_id),
-        )
-        conn.execute(
-            """INSERT INTO ticket_messages
-               (ticket_id, sender_type, sender_id, sender_username, message)
-               VALUES (?, 'mod', ?, ?, ?)""",
-            (ticket_db_id, mod_id, mod_username, message),
-        )
-        conn.commit()
-        conn.close()
-
     def get_stats(self, project_id=None):
         conn = get_connection()
         where = "WHERE project_id = ?" if project_id else ""
@@ -341,7 +371,8 @@ class Database:
         conn.close()
         return dict(row) if row else {}
 
-    def get_all_tickets_paginated(self, page=1, per_page=20, project_id=None, status=None):
+    def get_all_tickets_paginated(self, page=1, per_page=20, project_id=None,
+                                  status=None, allowed_project_ids=None):
         conn = get_connection()
         conditions, params = [], []
         if project_id:
@@ -350,6 +381,10 @@ class Database:
         if status:
             conditions.append("t.status = ?")
             params.append(status)
+        if allowed_project_ids:
+            placeholders = ",".join("?" * len(allowed_project_ids))
+            conditions.append(f"t.project_id IN ({placeholders})")
+            params.extend(allowed_project_ids)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         offset = (page - 1) * per_page
         rows = conn.execute(
@@ -365,3 +400,45 @@ class Database:
         ).fetchone()[0]
         conn.close()
         return [dict(r) for r in rows], total
+
+    # ── WEB USERS ─────────────────────────────────────────────────────────────
+
+    def get_all_web_users(self):
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT id, username, role, project_ids, created_at FROM web_users ORDER BY username"
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_web_user(self, username):
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT * FROM web_users WHERE username = ?", (username,)
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def create_web_user(self, username, password, role="viewer", project_ids=""):
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO web_users (username, password_hash, role, project_ids) VALUES (?, ?, ?, ?)",
+            (username, hash_password(password), role, project_ids),
+        )
+        conn.commit()
+        conn.close()
+
+    def update_web_user_password(self, user_id, new_password):
+        conn = get_connection()
+        conn.execute(
+            "UPDATE web_users SET password_hash = ? WHERE id = ?",
+            (hash_password(new_password), user_id),
+        )
+        conn.commit()
+        conn.close()
+
+    def delete_web_user(self, user_id):
+        conn = get_connection()
+        conn.execute("DELETE FROM web_users WHERE id = ?", (user_id,))
+        conn.commit()
+        conn.close()

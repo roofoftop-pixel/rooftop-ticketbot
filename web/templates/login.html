@@ -38,8 +38,12 @@
     {% endif %}
     <form method="POST">
       <div class="form-group">
+        <label class="form-label">Usuario <span style="color:var(--text-dim); font-weight:400">(dejar vacío si sos admin)</span></label>
+        <input type="text" name="username" placeholder="usuario" autocomplete="username" style="width:100%; background:#1a1a1a; border:1px solid var(--border); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:13px; padding:10px 14px; border-radius:4px; outline:none; margin-bottom:14px;" />
+      </div>
+      <div class="form-group">
         <label class="form-label">Contraseña</label>
-        <input type="password" name="password" placeholder="••••••••" autofocus />
+        <input type="password" name="password" placeholder="••••••••" autofocus autocomplete="current-password" />
       </div>
       <button type="submit" class="btn-login">INGRESAR →</button>
     </form>

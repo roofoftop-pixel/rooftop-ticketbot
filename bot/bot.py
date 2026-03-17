@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -27,9 +28,7 @@ logger = logging.getLogger(__name__)
 db = Database()
 
 # ── Conversation states ────────────────────────────────────────────────────────
-# User ticket flow
 DESCRIPTION, WALLET, BLOCKCHAIN, TX_HASH, SCREENSHOT = range(5)
-# Addproject flow
 ADD_NAME, ADD_GROUP, ADD_STAFF = range(10, 13)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -40,73 +39,82 @@ def sev_emoji(s):
 
 def status_emoji(s):
     return {
-        "open": "📬",
-        "in_progress": "⚙️",
-        "resolved": "✅",
-        "closed": "🔒",
-        "unresolved": "❌",
+        "open": "📬", "in_progress": "⚙️", "resolved": "✅",
+        "closed": "🔒", "unresolved": "❌",
     }.get(s or "", "❓")
 
 
-def ticket_card(ticket):
-    mod = ticket.get("assigned_mod_username") or "Unassigned"
+def _now_str():
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def staff_notification_text(ticket):
+    """Texto compacto para el grupo staff — solo lo esencial."""
     created = (ticket.get("created_at") or "")[:16]
-    sev = ticket.get("severity")
-    sev_line = f"{sev_emoji(sev)} Severity: *{sev.upper()}*\n" if sev else "⚪ Severity: *not set*\n"
+    desc = ticket["description"][:200]
     wallet = ticket.get("wallet_address") or "—"
     chain = ticket.get("blockchain") or "—"
     txhash = ticket.get("tx_hash") or "—"
-    screenshot = "✅ Yes" if ticket.get("has_screenshot") else "❌ No"
+    screenshot = "✅" if ticket.get("has_screenshot") else "❌"
     return (
-        f"🎫 *Ticket #{ticket['ticket_id']}*\n"
-        f"📁 Project: `{ticket.get('project_name', 'N/A')}`\n"
-        f"👤 User: @{ticket.get('username') or ticket['user_telegram_id']}\n"
-        f"{sev_line}"
-        f"{status_emoji(ticket['status'])} Status: *{ticket['status'].upper()}*\n"
-        f"🛡️ Mod: {mod}\n\n"
-        f"📝 *Description:*\n_{ticket['description']}_\n\n"
-        f"👛 Wallet: `{wallet}`\n"
-        f"⛓️ Blockchain: {chain}\n"
-        f"🔗 TX Hash: `{txhash}`\n"
-        f"🖼️ Screenshot: {screenshot}\n"
-        f"🕐 Created: {created}"
+        f"🎫 *Nuevo ticket #{ticket['ticket_id']}*\n"
+        f"📁 {ticket.get('project_name','?')} · "
+        f"👤 @{ticket.get('username') or ticket['user_telegram_id']}\n\n"
+        f"_{desc}_\n\n"
+        f"👛 `{wallet}` · ⛓️ {chain}\n"
+        f"🔗 `{txhash}` · 🖼️ {screenshot}\n"
+        f"🕐 {created}"
     )
 
 
-def staff_keyboard(ticket_db_id):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✋ Take", callback_data=f"take_{ticket_db_id}"),
-            InlineKeyboardButton("🔴 Set Severity", callback_data=f"severity_{ticket_db_id}"),
-        ],
-        [
-            InlineKeyboardButton("💬 Reply", callback_data=f"reply_{ticket_db_id}"),
-            InlineKeyboardButton("🔄 Reassign", callback_data=f"reassign_{ticket_db_id}"),
-        ],
-        [
-            InlineKeyboardButton("✅ Resolve", callback_data=f"resolve_{ticket_db_id}"),
-            InlineKeyboardButton("❌ No solution", callback_data=f"unresolved_{ticket_db_id}"),
-        ],
-    ])
+def staff_keyboard_simple(ticket_db_id):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✋ Take", callback_data=f"take_{ticket_db_id}"),
+        InlineKeyboardButton("🔄 Reassign", callback_data=f"reassign_{ticket_db_id}"),
+    ]])
 
 
 async def notify_staff(bot, ticket, project):
     staff_chat_id = project.get("staff_chat_id")
     if not staff_chat_id:
         return
-    text = f"🚨 *NEW TICKET*\n\n{ticket_card(ticket)}"
     try:
-        await bot.send_message(
+        msg = await bot.send_message(
             chat_id=int(staff_chat_id),
-            text=text,
+            text=staff_notification_text(ticket),
             parse_mode="Markdown",
-            reply_markup=staff_keyboard(ticket["id"]),
+            reply_markup=staff_keyboard_simple(ticket["id"]),
         )
+        db.save_staff_message_id(ticket["id"], msg.message_id)
     except Exception as e:
         logger.error(f"Error notifying staff: {e}")
 
 
-# ── /start — deep link entry point ─────────────────────────────────────────────
+async def edit_staff_message(bot, ticket, status_label):
+    """Edita el mensaje del staff group al cerrar/resolver un ticket."""
+    msg_id = ticket.get("staff_message_id")
+    chat_id = ticket.get("staff_chat_id")
+    if not msg_id or not chat_id:
+        return
+    text = (
+        f"🎫 *Ticket #{ticket['ticket_id']}* — {status_label}\n"
+        f"📁 {ticket.get('project_name','?')} · "
+        f"👤 @{ticket.get('username') or ticket['user_telegram_id']}\n\n"
+        f"_{ticket['description'][:150]}_\n\n"
+        f"🕐 Actualizado: {_now_str()}"
+    )
+    try:
+        await bot.edit_message_text(
+            chat_id=int(chat_id),
+            message_id=int(msg_id),
+            text=text,
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.error(f"Error editing staff message: {e}")
+
+
+# ── /start — deep link ─────────────────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
@@ -118,27 +126,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data["project_id"] = project_id
                 context.user_data["project_name"] = project["name"]
                 await update.message.reply_text(
-                    f"🎫 *New ticket — {project['name']}*\n\n"
-                    "📝 Describe your problem in detail:",
+                    f"🎫 *Nuevo ticket — {project['name']}*\n\n"
+                    "📝 Describí tu problema en detalle:",
                     parse_mode="Markdown",
                 )
                 return DESCRIPTION
         except Exception:
             pass
-
     await update.message.reply_text(
         "👋 *Ticket Support Bot*\n\n"
-        "To open a ticket, go to the project group and use /ticket.\n\n"
-        "Mod commands:\n"
-        "• /tickets — list open tickets\n"
-        "• /assigned — your assigned tickets\n"
-        "• /reply TKT-XXXX message — reply to user",
+        "Para abrir un ticket, usá /ticket en el grupo del proyecto.\n\n"
+        "Comandos mod:\n"
+        "• /tickets — ver tickets abiertos\n"
+        "• /assigned — mis tickets asignados\n"
+        "• /reply TKT-XXXX mensaje — responder al usuario",
         parse_mode="Markdown",
     )
     return ConversationHandler.END
 
 
-# ── /ticket — in group sends deep link; in DM starts flow directly ─────────────
+# ── /ticket ────────────────────────────────────────────────────────────────────
 
 async def ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -146,44 +153,38 @@ async def ticket_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         project = db.get_project_by_group_id(str(chat.id))
         if project:
             bot_info = await context.bot.get_me()
-            keyboard = [[
-                InlineKeyboardButton(
-                    "📬 Open ticket privately",
-                    url=f"https://t.me/{bot_info.username}?start=ticket_{project['id']}",
-                )
-            ]]
+            keyboard = [[InlineKeyboardButton(
+                "📬 Abrir ticket",
+                url=f"https://t.me/{bot_info.username}?start=ticket_{project['id']}",
+            )]]
             await update.message.reply_text(
-                f"To open a ticket for *{project['name']}*, tap below 👇",
+                f"Para abrir un ticket de *{project['name']}*, hacelo en privado 👇",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown",
             )
         else:
-            await update.message.reply_text("⚠️ This group has no project configured.")
+            await update.message.reply_text("⚠️ Este grupo no tiene proyecto configurado.")
         return ConversationHandler.END
 
-    # In DM: pick project if multiple
     projects = db.get_all_projects()
     if not projects:
-        await update.message.reply_text("⚠️ No projects configured yet.")
+        await update.message.reply_text("⚠️ No hay proyectos configurados.")
         return ConversationHandler.END
-
     if len(projects) == 1:
         context.user_data["project_id"] = projects[0]["id"]
         context.user_data["project_name"] = projects[0]["name"]
         await update.message.reply_text(
-            f"🎫 *New ticket — {projects[0]['name']}*\n\n"
-            "📝 Describe your problem in detail:",
+            f"🎫 *Nuevo ticket — {projects[0]['name']}*\n\n"
+            "📝 Describí tu problema en detalle:",
             parse_mode="Markdown",
         )
         return DESCRIPTION
-
     keyboard = [[InlineKeyboardButton(p["name"], callback_data=f"proj_{p['id']}")] for p in projects]
     await update.message.reply_text(
-        "📋 *Which project is this ticket for?*",
+        "📋 *¿Para qué proyecto es el ticket?*",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
-    # Stay in DESCRIPTION; project_selected moves us there
     return DESCRIPTION
 
 
@@ -195,18 +196,20 @@ async def project_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["project_id"] = project_id
     context.user_data["project_name"] = project["name"]
     await query.edit_message_text(
-        f"🎫 *New ticket — {project['name']}*\n\n"
-        "📝 Describe your problem in detail:",
+        f"🎫 *Nuevo ticket — {project['name']}*\n\n"
+        "📝 Describí tu problema en detalle:",
         parse_mode="Markdown",
     )
     return DESCRIPTION
 
 
+# ── Pasos del formulario ────────────────────────────────────────────────────────
+
 async def got_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["description"] = update.message.text
-    keyboard = [[InlineKeyboardButton("⏭️ Skip", callback_data="skip_wallet")]]
+    keyboard = [[InlineKeyboardButton("⏭️ Saltar", callback_data="skip_wallet")]]
     await update.message.reply_text(
-        "👛 *Wallet address?*\n_(or skip if not applicable)_",
+        "👛 *Dirección de wallet?*\n_(o saltá si no aplica)_",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -215,18 +218,18 @@ async def got_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def got_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["wallet_address"] = update.message.text
-    return await ask_blockchain(update, context)
+    return await _ask_blockchain_msg(update)
 
 
 async def skip_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["wallet_address"] = None
-    return await ask_blockchain_query(query, context)
+    return await _ask_blockchain_query(query)
 
 
-async def ask_blockchain(update, context):
-    keyboard = [
+def _blockchain_keyboard():
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("ETH", callback_data="chain_ETH"),
             InlineKeyboardButton("BSC", callback_data="chain_BSC"),
@@ -237,33 +240,23 @@ async def ask_blockchain(update, context):
             InlineKeyboardButton("ARB", callback_data="chain_ARB"),
             InlineKeyboardButton("OTHER", callback_data="chain_OTHER"),
         ],
-        [InlineKeyboardButton("⏭️ Skip", callback_data="chain_skip")],
-    ]
+        [InlineKeyboardButton("⏭️ Saltar", callback_data="chain_skip")],
+    ])
+
+
+async def _ask_blockchain_msg(update):
     await update.message.reply_text(
-        "⛓️ *Blockchain / network?*",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        "⛓️ *Blockchain / red?*",
+        reply_markup=_blockchain_keyboard(),
         parse_mode="Markdown",
     )
     return BLOCKCHAIN
 
 
-async def ask_blockchain_query(query, context):
-    keyboard = [
-        [
-            InlineKeyboardButton("ETH", callback_data="chain_ETH"),
-            InlineKeyboardButton("BSC", callback_data="chain_BSC"),
-            InlineKeyboardButton("SOL", callback_data="chain_SOL"),
-        ],
-        [
-            InlineKeyboardButton("MATIC", callback_data="chain_MATIC"),
-            InlineKeyboardButton("ARB", callback_data="chain_ARB"),
-            InlineKeyboardButton("OTHER", callback_data="chain_OTHER"),
-        ],
-        [InlineKeyboardButton("⏭️ Skip", callback_data="chain_skip")],
-    ]
+async def _ask_blockchain_query(query):
     await query.edit_message_text(
-        "⛓️ *Blockchain / network?*",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        "⛓️ *Blockchain / red?*",
+        reply_markup=_blockchain_keyboard(),
         parse_mode="Markdown",
     )
     return BLOCKCHAIN
@@ -274,9 +267,9 @@ async def got_blockchain(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     chain = query.data.replace("chain_", "")
     context.user_data["blockchain"] = None if chain == "skip" else chain
-    keyboard = [[InlineKeyboardButton("⏭️ Skip", callback_data="skip_txhash")]]
+    keyboard = [[InlineKeyboardButton("⏭️ Saltar", callback_data="skip_txhash")]]
     await query.edit_message_text(
-        "🔗 *Transaction hash?*\n_(or skip)_",
+        "🔗 *Hash de transacción?*\n_(o saltá)_",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -285,26 +278,26 @@ async def got_blockchain(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def got_tx_hash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["tx_hash"] = update.message.text
-    return await ask_screenshot(update, context)
+    return await _ask_screenshot_msg(update)
 
 
 async def skip_tx_hash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["tx_hash"] = None
-    keyboard = [[InlineKeyboardButton("⏭️ Skip", callback_data="skip_screenshot")]]
+    keyboard = [[InlineKeyboardButton("⏭️ Saltar", callback_data="skip_screenshot")]]
     await query.edit_message_text(
-        "🖼️ *Send a screenshot* or skip:",
+        "🖼️ *Enviá un screenshot* o saltá:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
     return SCREENSHOT
 
 
-async def ask_screenshot(update, context):
-    keyboard = [[InlineKeyboardButton("⏭️ Skip", callback_data="skip_screenshot")]]
+async def _ask_screenshot_msg(update):
+    keyboard = [[InlineKeyboardButton("⏭️ Saltar", callback_data="skip_screenshot")]]
     await update.message.reply_text(
-        "🖼️ *Send a screenshot* or skip:",
+        "🖼️ *Enviá un screenshot* o saltá:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -312,19 +305,22 @@ async def ask_screenshot(update, context):
 
 
 async def got_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo = update.message.photo[-1]  # mejor calidad
     context.user_data["has_screenshot"] = True
-    return await create_ticket(update, context)
+    context.user_data["screenshot_file_id"] = photo.file_id
+    return await _do_create_ticket(update=update, context=context)
 
 
 async def skip_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["has_screenshot"] = False
-    return await create_ticket_from_query(query, context)
+    context.user_data["screenshot_file_id"] = None
+    return await _do_create_ticket(query=query, context=context)
 
 
-async def create_ticket(update, context):
-    user = update.effective_user
+async def _do_create_ticket(context, update=None, query=None):
+    user = (update or query).from_user
     ud = context.user_data
     ticket = db.create_ticket(
         project_id=ud["project_id"],
@@ -335,39 +331,19 @@ async def create_ticket(update, context):
         blockchain=ud.get("blockchain"),
         tx_hash=ud.get("tx_hash"),
         has_screenshot=ud.get("has_screenshot", False),
+        screenshot_file_id=ud.get("screenshot_file_id"),
     )
     project = db.get_project(ud["project_id"])
-    await update.message.reply_text(
-        f"✅ *Ticket #{ticket['ticket_id']} created!*\n\n"
-        f"📁 Project: {project['name']}\n"
-        "A moderator will contact you soon.",
-        parse_mode="Markdown",
+    confirmation = (
+        f"✅ *Ticket #{ticket['ticket_id']} creado*\n\n"
+        f"📁 Proyecto: {project['name']}\n"
+        "Un moderador te contactará pronto.\n\n"
+        "_Podés seguir escribiendo acá para agregar más información._"
     )
-    await notify_staff(context.bot, ticket, project)
-    context.user_data.clear()
-    return ConversationHandler.END
-
-
-async def create_ticket_from_query(query, context):
-    user = query.from_user
-    ud = context.user_data
-    ticket = db.create_ticket(
-        project_id=ud["project_id"],
-        user_telegram_id=str(user.id),
-        username=user.username or user.first_name,
-        description=ud["description"],
-        wallet_address=ud.get("wallet_address"),
-        blockchain=ud.get("blockchain"),
-        tx_hash=ud.get("tx_hash"),
-        has_screenshot=ud.get("has_screenshot", False),
-    )
-    project = db.get_project(ud["project_id"])
-    await query.edit_message_text(
-        f"✅ *Ticket #{ticket['ticket_id']} created!*\n\n"
-        f"📁 Project: {project['name']}\n"
-        "A moderator will contact you soon.",
-        parse_mode="Markdown",
-    )
+    if update:
+        await update.message.reply_text(confirmation, parse_mode="Markdown")
+    else:
+        await query.edit_message_text(confirmation, parse_mode="Markdown")
     await notify_staff(context.bot, ticket, project)
     context.user_data.clear()
     return ConversationHandler.END
@@ -375,8 +351,30 @@ async def create_ticket_from_query(query, context):
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text("❌ Cancelled.")
+    await update.message.reply_text("❌ Cancelado.")
     return ConversationHandler.END
+
+
+# ── Mensajes libres del usuario en DM ─────────────────────────────────────────
+
+async def handle_user_free_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guarda el mensaje en la BD — llega solo a la web, no al grupo staff."""
+    if update.effective_chat.type != "private":
+        return
+    user = update.effective_user
+    ticket = db.get_active_ticket_for_user(str(user.id))
+    if not ticket:
+        await update.message.reply_text(
+            "No tenés un ticket activo. Usá /ticket para abrir uno."
+        )
+        return
+    text = update.message.text or "[media]"
+    db.add_message(ticket["id"], "user", str(user.id), user.username or user.first_name, text)
+    await update.message.reply_text(
+        f"✅ Mensaje guardado en tu ticket `#{ticket['ticket_id']}`.\n"
+        "_El moderador lo verá en el panel._",
+        parse_mode="Markdown",
+    )
 
 
 # ── /mytickets ─────────────────────────────────────────────────────────────────
@@ -385,13 +383,12 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     tickets = db.get_tickets_by_user(str(user.id))
     if not tickets:
-        await update.message.reply_text("📭 No active tickets.")
+        await update.message.reply_text("📭 No tenés tickets activos.")
         return
-    lines = [f"📋 *Your tickets ({len(tickets)}):*\n"]
+    lines = [f"📋 *Tus tickets ({len(tickets)}):*\n"]
     for t in tickets[:10]:
-        sev = sev_emoji(t.get("severity"))
         lines.append(
-            f"{status_emoji(t['status'])} `#{t['ticket_id']}` {sev}\n"
+            f"{status_emoji(t['status'])} `#{t['ticket_id']}` {sev_emoji(t.get('severity'))}\n"
             f"   _{t['description'][:60]}{'...' if len(t['description'])>60 else ''}_\n"
         )
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
@@ -402,21 +399,18 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
-
-    # Detectar si es un chat de staff o DM (acceso completo)
     is_staff = chat.type == "private"
     if not is_staff and chat.type in ("group", "supergroup"):
         for p in db.get_all_projects():
             if p.get("staff_chat_id") and str(chat.id) == str(p["staff_chat_id"]):
                 is_staff = True
                 break
-
     if is_staff:
         tickets = db.get_open_tickets()
         if not tickets:
-            await update.message.reply_text("📭 No open tickets.")
+            await update.message.reply_text("📭 No hay tickets abiertos.")
             return
-        lines = [f"📋 *Open tickets ({len(tickets)}):*\n"]
+        lines = [f"📋 *Tickets abiertos ({len(tickets)}):*\n"]
         for t in tickets[:15]:
             lines.append(
                 f"• `#{t['ticket_id']}` {sev_emoji(t.get('severity'))} "
@@ -425,15 +419,14 @@ async def list_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         tickets = db.get_tickets_by_user(str(user.id))
         if not tickets:
-            await update.message.reply_text("📭 You have no active tickets. Use /ticket to open one.")
+            await update.message.reply_text("📭 No tenés tickets activos. Usá /ticket para abrir uno.")
             return
-        lines = [f"📋 *Your tickets ({len(tickets)}):*\n"]
+        lines = [f"📋 *Tus tickets ({len(tickets)}):*\n"]
         for t in tickets[:10]:
             lines.append(
                 f"{status_emoji(t['status'])} `#{t['ticket_id']}` {sev_emoji(t.get('severity'))}\n"
                 f"   _{t['description'][:60]}{'...' if len(t['description'])>60 else ''}_\n"
             )
-
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
@@ -441,9 +434,9 @@ async def my_assigned(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mod = update.effective_user
     tickets = db.get_tickets_by_mod(str(mod.id))
     if not tickets:
-        await update.message.reply_text("📭 No assigned tickets.")
+        await update.message.reply_text("📭 No tenés tickets asignados.")
         return
-    lines = [f"🛡️ *Your assigned ({len(tickets)}):*\n"]
+    lines = [f"🛡️ *Tus asignados ({len(tickets)}):*\n"]
     for t in tickets:
         lines.append(
             f"{status_emoji(t['status'])} `#{t['ticket_id']}` "
@@ -456,26 +449,26 @@ async def my_assigned(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reply_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or len(context.args) < 2:
         await update.message.reply_text(
-            "Usage: `/reply TKT-XXXX your message here`", parse_mode="Markdown"
+            "Uso: `/reply TKT-XXXX mensaje aquí`", parse_mode="Markdown"
         )
         return
     ticket_id = context.args[0].upper().replace("#", "")
     message = " ".join(context.args[1:])
     ticket = db.get_ticket_by_ticket_id(ticket_id)
     if not ticket:
-        await update.message.reply_text(f"⚠️ Ticket {ticket_id} not found.")
+        await update.message.reply_text(f"⚠️ Ticket {ticket_id} no encontrado.")
         return
     mod = update.effective_user
     db.add_mod_response(ticket["id"], str(mod.id), mod.username or mod.first_name, message)
     try:
         await context.bot.send_message(
             chat_id=int(ticket["user_telegram_id"]),
-            text=f"💬 *Moderator reply — Ticket #{ticket_id}:*\n\n{message}",
+            text=f"💬 *Respuesta del moderador — Ticket #{ticket_id}:*\n\n{message}",
             parse_mode="Markdown",
         )
-        await update.message.reply_text(f"✅ Reply sent to ticket #{ticket_id}.")
+        await update.message.reply_text(f"✅ Respuesta enviada al ticket #{ticket_id}.")
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Could not send to user: {e}")
+        await update.message.reply_text(f"⚠️ No se pudo enviar al usuario: {e}")
 
 
 # ── Mod callback actions ───────────────────────────────────────────────────────
@@ -489,62 +482,56 @@ async def handle_mod_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mod = query.from_user
 
     if not ticket:
-        await query.answer("⚠️ Ticket not found.", show_alert=True)
+        await query.answer("⚠️ Ticket no encontrado.", show_alert=True)
         return
 
     if action == "take":
         db.assign_ticket(ticket_db_id, str(mod.id), mod.username or mod.first_name)
         db.update_ticket_status(ticket_db_id, "in_progress")
-        updated = db.get_ticket_by_db_id(ticket_db_id)
         await query.edit_message_text(
-            f"⚙️ *Taken by @{mod.username or mod.first_name}*\n\n{ticket_card(updated)}\n\n"
-            f"_Reply with: `/reply {ticket['ticket_id']} your message`_",
+            f"🎫 *Ticket #{ticket['ticket_id']}* — ⚙️ EN PROGRESO\n"
+            f"📁 {ticket.get('project_name','?')} · "
+            f"👤 @{ticket.get('username') or ticket['user_telegram_id']}\n\n"
+            f"_{ticket['description'][:150]}_\n\n"
+            f"✋ Tomado por @{mod.username or mod.first_name} a las {_now_str()}\n"
+            f"_Respondé desde el panel web o con /reply {ticket['ticket_id']} mensaje_",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("💬 Reply", callback_data=f"reply_{ticket_db_id}"),
-                    InlineKeyboardButton("🔄 Reassign", callback_data=f"reassign_{ticket_db_id}"),
-                ],
-                [
-                    InlineKeyboardButton("✅ Resolve", callback_data=f"resolve_{ticket_db_id}"),
-                    InlineKeyboardButton("❌ No solution", callback_data=f"unresolved_{ticket_db_id}"),
-                ],
-            ]),
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔄 Reassign", callback_data=f"reassign_{ticket_db_id}"),
+            ]]),
         )
         try:
             await context.bot.send_message(
                 chat_id=int(ticket["user_telegram_id"]),
-                text=f"⚙️ *Your ticket #{ticket['ticket_id']} has been picked up by a moderator.*\nYou'll receive a reply soon.",
+                text=f"⚙️ *Tu ticket #{ticket['ticket_id']} fue tomado por un moderador.*\nPronto recibirás respuesta.",
                 parse_mode="Markdown",
             )
         except Exception as e:
             logger.error(f"Cannot notify user: {e}")
 
-    elif action == "reply":
-        await query.answer(
-            f"Reply with: /reply {ticket['ticket_id']} your message",
-            show_alert=True,
-        )
-
     elif action == "reassign":
         db.unassign_ticket(ticket_db_id)
         updated = db.get_ticket_by_db_id(ticket_db_id)
         await query.edit_message_text(
-            f"🔄 *Ticket #{ticket['ticket_id']} reassigned — now open*\n\n{ticket_card(updated)}",
+            staff_notification_text(updated),
             parse_mode="Markdown",
-            reply_markup=staff_keyboard(ticket_db_id),
+            reply_markup=staff_keyboard_simple(ticket_db_id),
+        )
+
+    elif action == "reply":
+        await query.answer(
+            f"Respondé con: /reply {ticket['ticket_id']} tu mensaje",
+            show_alert=True,
         )
 
     elif action == "resolve":
         db.update_ticket_status(ticket_db_id, "resolved")
-        await query.edit_message_text(
-            f"✅ *Ticket #{ticket['ticket_id']} RESOLVED by @{mod.username or mod.first_name}*",
-            parse_mode="Markdown",
-        )
+        updated = db.get_ticket_by_db_id(ticket_db_id)
+        await edit_staff_message(context.bot, updated, "✅ RESUELTO")
         try:
             await context.bot.send_message(
                 chat_id=int(ticket["user_telegram_id"]),
-                text=f"✅ *Your ticket #{ticket['ticket_id']} has been resolved.*\nIf the issue persists, open a new ticket with /ticket.",
+                text=f"✅ *Tu ticket #{ticket['ticket_id']} fue resuelto.* Si el problema persiste, abrí uno nuevo con /ticket.",
                 parse_mode="Markdown",
             )
         except Exception as e:
@@ -552,14 +539,12 @@ async def handle_mod_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif action == "unresolved":
         db.update_ticket_status(ticket_db_id, "unresolved")
-        await query.edit_message_text(
-            f"❌ *Ticket #{ticket['ticket_id']} CLOSED — no solution — @{mod.username or mod.first_name}*",
-            parse_mode="Markdown",
-        )
+        updated = db.get_ticket_by_db_id(ticket_db_id)
+        await edit_staff_message(context.bot, updated, "❌ SIN SOLUCIÓN")
         try:
             await context.bot.send_message(
                 chat_id=int(ticket["user_telegram_id"]),
-                text=f"❌ *Your ticket #{ticket['ticket_id']} was closed without a solution.*\nThe team is aware of the issue.",
+                text=f"❌ *Tu ticket #{ticket['ticket_id']} fue cerrado sin solución.* El equipo está trabajando en ello.",
                 parse_mode="Markdown",
             )
         except Exception as e:
@@ -568,12 +553,12 @@ async def handle_mod_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "severity":
         keyboard = [
             [
-                InlineKeyboardButton("🟢 Low", callback_data=f"setsev_low_{ticket_db_id}"),
-                InlineKeyboardButton("🟡 Medium", callback_data=f"setsev_medium_{ticket_db_id}"),
+                InlineKeyboardButton("🟢 Baja", callback_data=f"setsev_low_{ticket_db_id}"),
+                InlineKeyboardButton("🟡 Media", callback_data=f"setsev_medium_{ticket_db_id}"),
             ],
             [
-                InlineKeyboardButton("🟠 High", callback_data=f"setsev_high_{ticket_db_id}"),
-                InlineKeyboardButton("🔴 Critical", callback_data=f"setsev_critical_{ticket_db_id}"),
+                InlineKeyboardButton("🟠 Alta", callback_data=f"setsev_high_{ticket_db_id}"),
+                InlineKeyboardButton("🔴 Crítica", callback_data=f"setsev_critical_{ticket_db_id}"),
             ],
         ]
         await query.edit_message_reply_markup(InlineKeyboardMarkup(keyboard))
@@ -587,49 +572,17 @@ async def handle_set_severity(update: Update, context: ContextTypes.DEFAULT_TYPE
     db.update_ticket_severity(ticket_db_id, severity)
     updated = db.get_ticket_by_db_id(ticket_db_id)
     await query.edit_message_text(
-        f"🔴 *Severity set to {severity.upper()}*\n\n{ticket_card(updated)}",
+        staff_notification_text(updated),
         parse_mode="Markdown",
-        reply_markup=staff_keyboard(ticket_db_id),
+        reply_markup=staff_keyboard_simple(ticket_db_id),
     )
-
-
-# ── Mensajes libres del usuario (fuera de ConversationHandler) ────────────────
-
-async def handle_user_free_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cuando un usuario escribe al bot en DM sin estar en una conversación activa,
-    reenvía el mensaje al staff del ticket abierto/en progreso."""
-    if update.effective_chat.type != "private":
-        return
-    user = update.effective_user
-    ticket = db.get_active_ticket_for_user(str(user.id))
-    if not ticket:
-        await update.message.reply_text(
-            "No tienes un ticket activo. Usa /ticket para abrir uno."
-        )
-        return
-    text = update.message.text or "[media]"
-    db.add_message(ticket["id"], "user", str(user.id), user.username or user.first_name, text)
-    if ticket.get("staff_chat_id"):
-        try:
-            await context.bot.send_message(
-                chat_id=int(ticket["staff_chat_id"]),
-                text=(
-                    f"💬 *Mensaje de @{user.username or user.first_name}* "
-                    f"— Ticket `#{ticket['ticket_id']}`:\n\n{text}"
-                ),
-                parse_mode="Markdown",
-            )
-        except Exception as e:
-            logger.error(f"Error forwarding user message to staff: {e}")
-    await update.message.reply_text("✅ Mensaje enviado al equipo de soporte.")
 
 
 # ── /addproject ────────────────────────────────────────────────────────────────
 
 async def addproject_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "➕ *New project setup*\n\n"
-        "Step 1: What's the *project name*?",
+        "➕ *Nuevo proyecto*\n\nPaso 1: ¿Cuál es el *nombre del proyecto*?",
         parse_mode="Markdown",
     )
     return ADD_NAME
@@ -638,10 +591,10 @@ async def addproject_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def addproject_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_proj_name"] = update.message.text.strip()
     await update.message.reply_text(
-        f"✅ Name: *{context.user_data['new_proj_name']}*\n\n"
-        "Step 2: Add me to the *public group* and send any message there.\n"
-        "I'll detect the Group Chat ID automatically.\n\n"
-        "_Or send the ID directly (e.g. -1001234567890)_",
+        f"✅ Nombre: *{context.user_data['new_proj_name']}*\n\n"
+        "Paso 2: Agregame al *grupo público* y enviá cualquier mensaje ahí.\n"
+        "Voy a detectar el Group Chat ID automáticamente.\n\n"
+        "_O enviame el ID directamente (ej: -1001234567890)_",
         parse_mode="Markdown",
     )
     return ADD_GROUP
@@ -649,23 +602,20 @@ async def addproject_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addproject_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
-    # Auto-detect: if message comes from a group chat
     if chat.type in ("group", "supergroup"):
         context.user_data["new_proj_group_id"] = str(chat.id)
         await update.message.reply_text(
-            f"✅ Public group detected: `{chat.id}` ({chat.title})\n\n"
-            "Step 3: Now add me to the *staff group* and send any message there.\n\n"
-            "_Or send the ID directly_",
+            f"✅ Grupo público detectado: `{chat.id}` ({chat.title})\n\n"
+            "Paso 3: Ahora agregame al *grupo de staff* y enviá cualquier mensaje ahí.\n\n"
+            "_O enviame el ID directamente_",
             parse_mode="Markdown",
         )
         return ADD_STAFF
-
-    # Manual entry in DM
     text = update.message.text.strip()
     context.user_data["new_proj_group_id"] = text
     await update.message.reply_text(
         f"✅ Group ID: `{text}`\n\n"
-        "Step 3: Now send me the *staff chat ID*\n_(or add me to the staff group and send a message)_",
+        "Paso 3: Enviame el *Staff Chat ID*\n_(o agregame al grupo staff y enviá un mensaje)_",
         parse_mode="Markdown",
     )
     return ADD_STAFF
@@ -673,28 +623,20 @@ async def addproject_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addproject_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
-    if chat.type in ("group", "supergroup"):
-        staff_id = str(chat.id)
-        staff_name = chat.title
-    else:
-        staff_id = update.message.text.strip()
-        staff_name = staff_id
-
+    staff_id = str(chat.id) if chat.type in ("group", "supergroup") else update.message.text.strip()
     project = db.create_project(
         name=context.user_data["new_proj_name"],
         group_chat_id=context.user_data.get("new_proj_group_id"),
         staff_chat_id=staff_id,
     )
-    # Notify in the right chat (DM of the admin)
-    target = update.effective_user.id
     await context.bot.send_message(
-        chat_id=target,
+        chat_id=update.effective_user.id,
         text=(
-            f"✅ *Project created!*\n\n"
-            f"Name: *{project['name']}*\n"
-            f"Group: `{project.get('group_chat_id','—')}`\n"
+            f"✅ *Proyecto creado*\n\n"
+            f"Nombre: *{project['name']}*\n"
+            f"Grupo: `{project.get('group_chat_id','—')}`\n"
             f"Staff: `{project.get('staff_chat_id','—')}`\n\n"
-            f"Use /ticket in the public group to test."
+            "Usá /ticket en el grupo público para probar."
         ),
         parse_mode="Markdown",
     )
@@ -705,13 +647,13 @@ async def addproject_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def list_projects(update: Update, context: ContextTypes.DEFAULT_TYPE):
     projects = db.get_all_projects()
     if not projects:
-        await update.message.reply_text("📭 No projects configured. Use /addproject.")
+        await update.message.reply_text("📭 No hay proyectos. Usá /addproject.")
         return
-    lines = [f"📋 *Projects ({len(projects)}):*\n"]
+    lines = [f"📋 *Proyectos ({len(projects)}):*\n"]
     for p in projects:
         lines.append(
             f"• *{p['name']}* (#{p['id']})\n"
-            f"  Group: `{p.get('group_chat_id','—')}`\n"
+            f"  Grupo: `{p.get('group_chat_id','—')}`\n"
             f"  Staff: `{p.get('staff_chat_id','—')}`\n"
         )
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
@@ -723,7 +665,6 @@ async def main():
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     app = Application.builder().token(token).build()
 
-    # User ticket conversation
     ticket_conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -754,7 +695,6 @@ async def main():
         allow_reentry=True,
     )
 
-    # Add project conversation (per_chat=False so it can catch group messages)
     addproject_conv = ConversationHandler(
         entry_points=[CommandHandler("addproject", addproject_start)],
         states={
@@ -780,7 +720,7 @@ async def main():
             pattern=r"^(take|reply|reassign|resolve|unresolved|severity)_",
         )
     )
-    # Handler de mensajes libres en DM (fuera del ConversationHandler — grupo 1)
+    # Mensajes libres en DM (fuera de ConversationHandler)
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
@@ -789,7 +729,7 @@ async def main():
         group=1,
     )
 
-    logger.info("Bot starting...")
+    logger.info("Bot iniciando...")
     async with app:
         await app.start()
         await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)

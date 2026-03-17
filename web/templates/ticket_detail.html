@@ -21,7 +21,23 @@
         <div><span style="color:var(--text-dim);">👛 Wallet:</span> <code style="color:var(--gold);">{{ ticket.wallet_address or '—' }}</code></div>
         <div><span style="color:var(--text-dim);">⛓️ Blockchain:</span> {{ ticket.blockchain or '—' }}</div>
         <div><span style="color:var(--text-dim);">🔗 TX Hash:</span> <code style="color:var(--gold);">{{ ticket.tx_hash or '—' }}</code></div>
-        <div><span style="color:var(--text-dim);">🖼️ Screenshot:</span> {% if ticket.has_screenshot %}✅ Yes{% else %}❌ No{% endif %}</div>
+        <div>
+          <span style="color:var(--text-dim);">🖼️ Screenshot:</span>
+          {% if ticket.screenshot_file_id %}
+            <a href="/ticket/{{ ticket.id }}/screenshot" target="_blank"
+               style="color:var(--gold); text-decoration:underline;">Ver imagen ↗</a>
+            <div style="margin-top:8px;">
+              <img src="/ticket/{{ ticket.id }}/screenshot"
+                   style="max-width:100%; max-height:300px; border-radius:4px; border:1px solid var(--border); cursor:pointer;"
+                   onclick="window.open(this.src,'_blank')"
+                   title="Click para abrir en tamaño completo" />
+            </div>
+          {% elif ticket.has_screenshot %}
+            ✅ Sí (imagen no disponible)
+          {% else %}
+            ❌ No
+          {% endif %}
+        </div>
       </div>
     </div>
 

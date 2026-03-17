@@ -215,13 +215,22 @@
     <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
       <span class="nav-icon">◈</span> Dashboard
     </a>
-    <a href="/tickets" class="nav-item {% if '/tickets' in request.path %}active{% endif %}">
+    <a href="/tickets" class="nav-item {% if '/tickets' in request.path and '/ticket/' not in request.path %}active{% endif %}">
       <span class="nav-icon">◉</span> Tickets
     </a>
+    {% if session.get('role') == 'admin' %}
     <a href="/projects" class="nav-item {% if '/projects' in request.path %}active{% endif %}">
       <span class="nav-icon">◎</span> Proyectos
     </a>
+    <a href="/users" class="nav-item {% if '/users' in request.path %}active{% endif %}">
+      <span class="nav-icon">◐</span> Usuarios
+    </a>
+    {% endif %}
     <div class="sidebar-footer">
+      <div style="color:var(--text-dim); font-size:10px; padding: 0 0 8px 0; letter-spacing:0.05em;">
+        {{ session.get('username','') | upper }}
+        {% if session.get('role') == 'admin' %}<span style="color:var(--gold)"> ★</span>{% endif %}
+      </div>
       <a href="/logout" class="nav-item" style="padding:0">
         <span class="nav-icon">↩</span> Logout
       </a>
