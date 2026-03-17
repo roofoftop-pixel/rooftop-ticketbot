@@ -12,7 +12,5 @@ services:
         sync: false
       - key: SECRET_KEY
         sync: false
-      - key: DB_PATH
-        value: /var/data/tickets.db
       - key: PORT
         value: 10000
