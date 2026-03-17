@@ -436,6 +436,26 @@
       color: var(--text-dim);
       margin-bottom: 14px;
     }
+
+    /* ── PROJECT LOGO ───────────────────────────────────── */
+    .proj-logo {
+      width: 32px; height: 32px;
+      border-radius: 7px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .proj-logo-placeholder {
+      width: 32px; height: 32px;
+      border-radius: 7px;
+      background: var(--accent-low);
+      border: 1px solid var(--accent-mid);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
   </style>
   {% block extra_style %}{% endblock %}
 </head>
@@ -452,7 +472,9 @@
   <nav class="sidebar">
     <div class="sidebar-brand">
       {% if theme and theme.logo_url %}
-        <img src="{{ theme.logo_url }}" class="sidebar-logo-img" alt="logo" onerror="this.style.display='none'" />
+        <img src="{{ theme.logo_url }}" class="sidebar-logo-img" alt="logo"
+             onerror="this.style.display='none'; this.nextElementSibling && (this.nextElementSibling.style.display='flex')" />
+        <div class="sidebar-brand-icon" style="display:none;">🎫</div>
       {% else %}
         <div class="sidebar-brand-icon">🎫</div>
       {% endif %}

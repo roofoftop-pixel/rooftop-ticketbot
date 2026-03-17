@@ -32,11 +32,15 @@
       <div class="card" style="border-left:3px solid {{ p.primary_color or 'var(--accent)' }}; transition:transform 0.15s, box-shadow 0.15s; cursor:pointer;"
            onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 16px var(--shadow)'"
            onmouseout="this.style.transform='';this.style.boxShadow=''">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
           {% if p.logo_url %}
-            <img src="{{ p.logo_url }}" style="height:20px; width:20px; object-fit:cover; border-radius:3px;" onerror="this.style.display='none'" />
+            <img src="{{ p.logo_url }}" class="proj-logo"
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex'" />
+            <span class="proj-logo-placeholder" style="display:none;">{{ (p.site_name or p.name)[:1]|upper }}</span>
+          {% else %}
+            <span class="proj-logo-placeholder">{{ (p.site_name or p.name)[:1]|upper }}</span>
           {% endif %}
-          <span style="font-family:inherit; font-weight:700; font-size:13px; color:{{ p.primary_color or 'var(--accent)' }};">
+          <span style="font-weight:600; font-size:13px; color:{{ p.primary_color or 'var(--accent)' }};">
             {{ p.site_name or p.name }}
           </span>
         </div>

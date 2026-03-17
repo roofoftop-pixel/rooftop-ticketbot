@@ -8,7 +8,11 @@
   {% endif %}
   <div style="display:flex; align-items:center; gap:10px;">
     {% if project.logo_url %}
-      <img src="{{ project.logo_url }}" style="height:28px; width:28px; object-fit:cover; border-radius:4px;" onerror="this.style.display='none'" />
+      <img src="{{ project.logo_url }}" class="proj-logo"
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex'" />
+      <span class="proj-logo-placeholder" style="display:none;">{{ (project.site_name or project.name)[:1]|upper }}</span>
+    {% else %}
+      <span class="proj-logo-placeholder">{{ (project.site_name or project.name)[:1]|upper }}</span>
     {% endif %}
     <h2 class="page-title" style="color:{{ project.primary_color or 'var(--accent)' }}">
       {{ project.site_name or project.name }}

@@ -4,6 +4,7 @@ import csv
 import io
 import json as _json
 import urllib.request as _ur
+import uuid
 from functools import wraps
 from datetime import datetime
 
@@ -13,10 +14,17 @@ from flask import (
     Flask, render_template, request, jsonify,
     redirect, url_for, session, Response,
 )
+from werkzeug.utils import secure_filename
 from database.db import Database
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret")
+app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024  # 3 MB max upload
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif"}
+
 db = Database()
 
 PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "admin1234")
@@ -531,6 +539,24 @@ def get_internal_notes(ticket_db_id):
     if not _can_internal_notes():
         return jsonify({"error": "Not authorized"}), 403
     return jsonify(db.get_internal_notes(ticket_db_id))
+
+
+# ── Logo Upload ───────────────────────────────────────────────────────────────
+
+@app.route("/api/upload-logo", methods=["POST"])
+@admin_required
+def upload_logo():
+    if "file" not in request.files:
+        return jsonify({"error": "No file"}), 400
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"error": "Invalid file type"}), 400
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    f.save(os.path.join(UPLOAD_FOLDER, filename))
+    return jsonify({"ok": True, "url": f"/static/uploads/{filename}"})
 
 
 # ── Projects API ──────────────────────────────────────────────────────────────
