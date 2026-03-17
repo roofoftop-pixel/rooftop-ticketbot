@@ -23,7 +23,7 @@
       <option value="closed" {% if status=='closed' %}selected{% endif %}>🔒 Closed</option>
     </select>
     {% if project_id or status %}
-    <a href="/tickets" class="btn btn-sm" style="color:var(--red); border-color:rgba(239,68,68,0.3)">✕ Clear</a>
+    <a href="/tickets" class="btn btn-sm" style="color:#ef4444; border-color:rgba(239,68,68,0.3)">✕ Clear</a>
     {% endif %}
   </form>
 </div>
@@ -34,11 +34,11 @@
     <thead>
       <tr>
         <th>ID</th>
-        <th>Proyecto</th>
-        <th>Usuario</th>
+        <th>Project</th>
+        <th>User</th>
         <th>Severity</th>
         <th>Status</th>
-        <th>Assigned mod</th>
+        <th>Assigned Mod</th>
         <th>Date</th>
       </tr>
     </thead>
@@ -46,7 +46,7 @@
     {% for t in tickets %}
     <tr style="cursor:pointer" onclick="location.href='/ticket/{{ t.id }}'">
       <td class="tkt-id">#{{ t.ticket_id }}</td>
-      <td style="color:var(--gold)">{{ t.project_name or '—' }}</td>
+      <td style="color:var(--accent)">{{ t.project_name or '—' }}</td>
       <td style="color:var(--text-dim)">@{{ t.username or t.user_telegram_id }}</td>
       <td><span class="sev-dot sev-{{ t.severity or 'none' }}"></span>{{ t.severity or '—' }}</td>
       <td><span class="badge badge-{{ t.status }}">{{ t.status }}</span></td>

@@ -8,32 +8,35 @@
 </div>
 
 <div style="display:grid; grid-template-columns:1fr 320px; gap:20px;">
-  <!-- LEFT -->
+  <!-- LEFT COLUMN -->
   <div style="display:flex; flex-direction:column; gap:16px;">
+
+    <!-- Description -->
     <div class="card">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Description</div>
+      <div class="section-label">Description</div>
       <p style="line-height:1.7; color:var(--text);">{{ ticket.description }}</p>
     </div>
 
+    <!-- Crypto Details -->
     <div class="card">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Crypto Details</div>
+      <div class="section-label">Crypto Details</div>
       <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
-        <div><span style="color:var(--text-dim);">👛 Wallet:</span> <code style="color:var(--gold);">{{ ticket.wallet_address or '—' }}</code></div>
+        <div><span style="color:var(--text-dim);">👛 Wallet:</span> <code style="color:var(--accent);">{{ ticket.wallet_address or '—' }}</code></div>
         <div><span style="color:var(--text-dim);">⛓️ Blockchain:</span> {{ ticket.blockchain or '—' }}</div>
-        <div><span style="color:var(--text-dim);">🔗 TX Hash:</span> <code style="color:var(--gold);">{{ ticket.tx_hash or '—' }}</code></div>
+        <div><span style="color:var(--text-dim);">🔗 TX Hash:</span> <code style="color:var(--accent);">{{ ticket.tx_hash or '—' }}</code></div>
         <div>
-          <span style="color:var(--text-dim);">🖼️ Screenshot:</span>
+          <span style="color:var(--text-dim);">📎 Screenshot:</span>
           {% if ticket.screenshot_file_id %}
             <a href="/ticket/{{ ticket.id }}/screenshot" target="_blank"
-               style="color:var(--gold); text-decoration:underline;">Ver imagen ↗</a>
+               style="color:var(--accent); text-decoration:underline;">View image ↗</a>
             <div style="margin-top:8px;">
               <img src="/ticket/{{ ticket.id }}/screenshot"
                    style="max-width:100%; max-height:300px; border-radius:4px; border:1px solid var(--border); cursor:pointer;"
                    onclick="window.open(this.src,'_blank')"
-                   title="Click para abrir en tamaño completo" />
+                   title="Click to open full size" />
             </div>
           {% elif ticket.has_screenshot %}
-            ✅ Sí (imagen no disponible)
+            ✅ Yes (image unavailable)
           {% else %}
             ❌ No
           {% endif %}
@@ -41,34 +44,56 @@
       </div>
     </div>
 
-    <!-- CONVERSACIÓN -->
-    <div class="card" style="border-color:rgba(201,168,76,0.2);">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">💬 Conversation</div>
-      <div id="chatThread" style="display:flex; flex-direction:column; gap:10px; max-height:400px; overflow-y:auto; margin-bottom:14px;">
-        <div style="text-align:center; color:var(--text-dim); font-size:11px; padding:12px 0;" id="noMessages">Loading...</div>
+    <!-- Public Conversation -->
+    <div class="card" style="border-color:color-mix(in srgb, var(--accent) 25%, transparent);">
+      <div class="section-label" style="color:var(--accent);">💬 Conversation — Visible to User</div>
+      <div id="chatThread" style="display:flex; flex-direction:column; gap:10px; max-height:380px; overflow-y:auto; margin-bottom:14px; padding-right:4px;">
+        <div style="text-align:center; color:var(--text-dim); font-size:11px; padding:12px 0;">Loading...</div>
       </div>
       <div style="display:flex; gap:8px; align-items:flex-end;">
-        <textarea id="replyInput" placeholder="Write a reply..." rows="2"
-          style="flex:1; background:var(--surface2); border:1px solid var(--border); color:var(--text);
-                 font-family:var(--font-mono); font-size:12px; padding:8px 12px; border-radius:4px;
-                 outline:none; resize:none; line-height:1.5;"
+        <textarea id="replyInput" placeholder="Write a reply to the user..." rows="2"
+          style="flex:1; resize:none; line-height:1.5;"
           onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){sendReply();event.preventDefault()}"
-          onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
         </textarea>
-        <button class="btn btn-gold" onclick="sendReply()" style="white-space:nowrap;">Send ↵</button>
+        <button class="btn btn-accent" onclick="sendReply()" style="white-space:nowrap;">Send ↵</button>
       </div>
-      <div style="color:var(--text-dim); font-size:10px; margin-top:6px;">Ctrl+Enter to send — reply goes directly to the user via Telegram</div>
+      <div style="color:var(--text-dim); font-size:10px; margin-top:6px;">Ctrl+Enter to send · Reply goes directly to the user via Telegram</div>
     </div>
+
+    <!-- Internal Notes (team only) -->
+    {% if can_internal %}
+    <div class="card" style="border-color:rgba(139,92,246,0.3);">
+      <div class="section-label" style="color:#8b5cf6;">🔒 Internal Notes — Team Only</div>
+      <div style="font-size:10px; color:var(--text-dim); margin-bottom:12px; letter-spacing:0.03em;">
+        Not visible to the user. Use this space to coordinate with your team.
+      </div>
+      <div id="internalThread" style="display:flex; flex-direction:column; gap:10px; max-height:280px; overflow-y:auto; margin-bottom:14px; padding-right:4px;">
+        <div style="text-align:center; color:var(--text-dim); font-size:11px; padding:12px 0;">Loading...</div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:flex-end;">
+        <textarea id="internalInput" placeholder="Write an internal note..." rows="2"
+          style="flex:1; resize:none; line-height:1.5; border-color:rgba(139,92,246,0.3);"
+          onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){sendInternal();event.preventDefault()}"
+          onfocus="this.style.borderColor='#8b5cf6'" onblur="this.style.borderColor='rgba(139,92,246,0.3)'">
+        </textarea>
+        <button class="btn" onclick="sendInternal()"
+          style="white-space:nowrap; border-color:rgba(139,92,246,0.4); color:#8b5cf6;">Note 🔒</button>
+      </div>
+      <div style="color:var(--text-dim); font-size:10px; margin-top:6px;">Ctrl+Enter · Internal only — never sent to the user</div>
+    </div>
+    {% endif %}
+
   </div>
 
-  <!-- RIGHT -->
+  <!-- RIGHT COLUMN -->
   <div style="display:flex; flex-direction:column; gap:16px;">
     <div class="card">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:16px;">Details</div>
+      <div class="section-label">Details</div>
       <div style="display:flex; flex-direction:column; gap:12px;">
         <div>
           <div class="form-label">Project</div>
-          <div style="color:var(--gold); font-weight:600;">{{ ticket.project_name or '—' }}</div>
+          <div style="color:var(--accent); font-weight:600;">{{ ticket.project_name or '—' }}</div>
         </div>
         <div>
           <div class="form-label">User</div>
@@ -100,21 +125,21 @@
     </div>
 
     <div class="card">
-      <div style="font-family:var(--font-display); font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:14px;">Actions</div>
+      <div class="section-label">Actions</div>
       <div style="display:flex; flex-direction:column; gap:8px;">
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Change status</label>
+          <label class="form-label">Change Status</label>
           <select id="statusSelect" style="width:100%;">
             <option value="open" {% if ticket.status=='open' %}selected{% endif %}>📬 Open</option>
-            <option value="in_progress" {% if ticket.status=='in_progress' %}selected{% endif %}>⚙️ In progress</option>
+            <option value="in_progress" {% if ticket.status=='in_progress' %}selected{% endif %}>⚙️ In Progress</option>
             <option value="resolved" {% if ticket.status=='resolved' %}selected{% endif %}>✅ Resolved</option>
-            <option value="unresolved" {% if ticket.status=='unresolved' %}selected{% endif %}>❌ No solution</option>
+            <option value="unresolved" {% if ticket.status=='unresolved' %}selected{% endif %}>❌ No Solution</option>
             <option value="closed" {% if ticket.status=='closed' %}selected{% endif %}>🔒 Closed</option>
           </select>
-          <button class="btn btn-gold" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateStatus()">Update status</button>
+          <button class="btn btn-accent" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateStatus()">Update Status</button>
         </div>
         <div class="form-group" style="margin-bottom:0; margin-top:8px;">
-          <label class="form-label">Change severity</label>
+          <label class="form-label">Change Severity</label>
           <select id="sevSelect" style="width:100%;">
             <option value="" {% if not ticket.severity %}selected{% endif %}>— not set —</option>
             <option value="low" {% if ticket.severity=='low' %}selected{% endif %}>🟢 Low</option>
@@ -122,21 +147,36 @@
             <option value="high" {% if ticket.severity=='high' %}selected{% endif %}>🟠 High</option>
             <option value="critical" {% if ticket.severity=='critical' %}selected{% endif %}>🔴 Critical</option>
           </select>
-          <button class="btn" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateSeverity()">Update severity</button>
+          <button class="btn" style="width:100%; margin-top:8px; justify-content:center;" onclick="updateSeverity()">Update Severity</button>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--gold); padding:12px 20px; border-radius:6px; font-size:12px; color:var(--gold); z-index:999;"></div>
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--accent); padding:12px 20px; border-radius:6px; font-size:12px; color:var(--accent); z-index:999; box-shadow:0 4px 16px var(--shadow);"></div>
+
+<style>
+.section-label {
+  font-family: 'Syne', sans-serif;
+  font-size: 11px; font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 14px;
+}
+</style>
 
 <script>
 const ticketId = {{ ticket.id }};
+const canInternal = {{ 'true' if can_internal else 'false' }};
 
-function showToast(msg) {
+function showToast(msg, isError) {
   const t = document.getElementById('toast');
-  t.textContent = msg; t.style.display = 'block';
+  t.textContent = msg;
+  t.style.borderColor = isError ? '#ef4444' : 'var(--accent)';
+  t.style.color = isError ? '#ef4444' : 'var(--accent)';
+  t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 2500);
 }
 
@@ -146,32 +186,41 @@ async function updateStatus() {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({status})
   });
-  if ((await res.json()).ok) showToast('✅ Status updated');
+  const d = await res.json();
+  d.ok ? showToast('✅ Status updated') : showToast('⚠️ ' + d.error, true);
 }
 
 async function updateSeverity() {
   const severity = document.getElementById('sevSelect').value;
-  if (!severity) { showToast('⚠️ Select a severity first'); return; }
+  if (!severity) { showToast('⚠️ Select a severity first', true); return; }
   const res = await fetch(`/api/ticket/${ticketId}/severity`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({severity})
   });
-  if ((await res.json()).ok) showToast('✅ Severity updated');
+  const d = await res.json();
+  d.ok ? showToast('✅ Severity updated') : showToast('⚠️ ' + d.error, true);
 }
 
-// ── Conversation thread ────────────────────────────────────────────────────────
+// ── Public conversation ────────────────────────────────────────────────────────
 
 function msgBubble(m) {
-  const isMod = m.sender_type === 'mod';
-  const time = (m.created_at || '').slice(11, 16);
-  const name = m.sender_username || (isMod ? 'Mod' : 'User');
-  const color = isMod ? 'var(--gold)' : 'var(--blue)';
+  const isMod = m.sender_type === 'mod' || m.sender_type === 'moderator'
+                || m.sender_type === 'admin' || m.sender_type === 'dev'
+                || m.sender_type === 'team';
+  const time = (m.created_at || '').slice(0, 16).replace('T', ' ');
+  const name = m.sender_username || (isMod ? 'Team' : 'User');
   const align = isMod ? 'flex-end' : 'flex-start';
-  const bg = isMod ? 'rgba(201,168,76,0.08)' : 'rgba(59,130,246,0.08)';
-  const border = isMod ? 'rgba(201,168,76,0.25)' : 'rgba(59,130,246,0.25)';
+  const bg = isMod
+    ? 'color-mix(in srgb, var(--accent) 8%, transparent)'
+    : 'rgba(59,130,246,0.07)';
+  const border = isMod
+    ? 'color-mix(in srgb, var(--accent) 28%, transparent)'
+    : 'rgba(59,130,246,0.22)';
+  const nameColor = isMod ? 'var(--accent)' : '#3b82f6';
+  const icon = isMod ? '🛡️' : '👤';
   return `
     <div style="display:flex; flex-direction:column; align-items:${align}; gap:2px;">
-      <div style="font-size:10px; color:${color}; margin-bottom:1px;">${isMod ? '🛡️' : '👤'} ${name} · ${time}</div>
+      <div style="font-size:10px; color:${nameColor}; margin-bottom:1px;">${icon} ${name} · ${time}</div>
       <div style="background:${bg}; border:1px solid ${border}; border-radius:6px; padding:8px 12px;
                   max-width:85%; font-size:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word;">
         ${m.message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}
@@ -207,12 +256,64 @@ async function sendReply() {
     showToast('✅ Reply sent via Telegram');
     await loadMessages();
   } else {
-    showToast('⚠️ ' + (data.error || 'Error'));
+    showToast('⚠️ ' + (data.error || 'Error'), true);
   }
 }
 
-// Cargar mensajes al abrir y refrescar cada 15 segundos
+// ── Internal notes ─────────────────────────────────────────────────────────────
+
+function internalBubble(m) {
+  const time = (m.created_at || '').slice(0, 16).replace('T', ' ');
+  const name = m.sender_username || 'Team';
+  const roleLabel = m.sender_type ? ` [${m.sender_type}]` : '';
+  return `
+    <div style="display:flex; flex-direction:column; gap:2px;">
+      <div style="font-size:10px; color:#8b5cf6; margin-bottom:1px;">🔒 ${name}${roleLabel} · ${time}</div>
+      <div class="internal-note" style="white-space:pre-wrap; word-break:break-word;">
+        ${m.message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+      </div>
+    </div>`;
+}
+
+async function loadInternalNotes() {
+  if (!canInternal) return;
+  const thread = document.getElementById('internalThread');
+  if (!thread) return;
+  const res = await fetch(`/api/ticket/${ticketId}/internal`);
+  if (!res.ok) return;
+  const notes = await res.json();
+  if (!notes.length) {
+    thread.innerHTML = '<div style="text-align:center; color:var(--text-dim); font-size:11px; padding:12px 0;">No internal notes yet.</div>';
+    return;
+  }
+  thread.innerHTML = notes.map(internalBubble).join('');
+  thread.scrollTop = thread.scrollHeight;
+}
+
+async function sendInternal() {
+  const input = document.getElementById('internalInput');
+  const message = input.value.trim();
+  if (!message) return;
+  input.disabled = true;
+  const res = await fetch(`/api/ticket/${ticketId}/internal`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({message})
+  });
+  const data = await res.json();
+  input.disabled = false;
+  if (data.ok) {
+    input.value = '';
+    showToast('🔒 Internal note saved');
+    await loadInternalNotes();
+  } else {
+    showToast('⚠️ ' + (data.error || 'Error'), true);
+  }
+}
+
+// Load on open and refresh every 15s
 loadMessages();
+if (canInternal) loadInternalNotes();
 setInterval(loadMessages, 15000);
+if (canInternal) setInterval(loadInternalNotes, 15000);
 </script>
 {% endblock %}

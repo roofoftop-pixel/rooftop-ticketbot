@@ -33,7 +33,9 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 group_chat_id TEXT,
-                staff_chat_id TEXT,
+                site_name TEXT,
+                logo_url TEXT,
+                primary_color TEXT DEFAULT '#c9a84c',
                 created_at TEXT DEFAULT (datetime('now'))
             );
             CREATE TABLE IF NOT EXISTS tickets (
@@ -64,6 +66,7 @@ class Database:
                 sender_id TEXT,
                 sender_username TEXT,
                 message TEXT NOT NULL,
+                is_internal INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT (datetime('now'))
             );
             CREATE TABLE IF NOT EXISTS web_users (
@@ -77,10 +80,17 @@ class Database:
         """)
         conn.commit()
         # Migrations for columns added after initial deploy
-        for sql in [
+        migrations = [
             "ALTER TABLE tickets ADD COLUMN screenshot_file_id TEXT",
             "ALTER TABLE tickets ADD COLUMN staff_message_id INTEGER",
-        ]:
+            "ALTER TABLE ticket_messages ADD COLUMN is_internal INTEGER DEFAULT 0",
+            "ALTER TABLE projects ADD COLUMN site_name TEXT",
+            "ALTER TABLE projects ADD COLUMN logo_url TEXT",
+            "ALTER TABLE projects ADD COLUMN primary_color TEXT DEFAULT '#c9a84c'",
+            # Legacy: keep staff_chat_id column for existing installs
+            "ALTER TABLE projects ADD COLUMN staff_chat_id TEXT",
+        ]
+        for sql in migrations:
             try:
                 conn.execute(sql)
                 conn.commit()
@@ -110,32 +120,40 @@ class Database:
         conn.close()
         return dict(row) if row else None
 
-    def create_project(self, name, group_chat_id=None, staff_chat_id=None):
+    def create_project(self, name, group_chat_id=None, site_name=None,
+                       logo_url=None, primary_color=None):
         conn = get_connection()
         cur = conn.execute(
-            "INSERT INTO projects (name, group_chat_id, staff_chat_id) VALUES (?, ?, ?)",
-            (name, group_chat_id, staff_chat_id),
+            """INSERT INTO projects (name, group_chat_id, site_name, logo_url, primary_color)
+               VALUES (?, ?, ?, ?, ?)""",
+            (name, group_chat_id, site_name, logo_url, primary_color or "#c9a84c"),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (cur.lastrowid,)).fetchone()
         conn.close()
         return dict(row)
 
-    def update_project(self, project_id, name=None, group_chat_id=None, staff_chat_id=None):
+    def update_project(self, project_id, name=None, group_chat_id=None,
+                       site_name=None, logo_url=None, primary_color=None):
         conn = get_connection()
-        if name:
-            conn.execute("UPDATE projects SET name = ? WHERE id = ?", (name, project_id))
+        fields = []
+        params = []
+        if name is not None:
+            fields.append("name = ?"); params.append(name)
         if group_chat_id is not None:
+            fields.append("group_chat_id = ?"); params.append(group_chat_id)
+        if site_name is not None:
+            fields.append("site_name = ?"); params.append(site_name)
+        if logo_url is not None:
+            fields.append("logo_url = ?"); params.append(logo_url)
+        if primary_color is not None:
+            fields.append("primary_color = ?"); params.append(primary_color)
+        if fields:
+            params.append(project_id)
             conn.execute(
-                "UPDATE projects SET group_chat_id = ? WHERE id = ?",
-                (group_chat_id, project_id),
+                f"UPDATE projects SET {', '.join(fields)} WHERE id = ?", params
             )
-        if staff_chat_id is not None:
-            conn.execute(
-                "UPDATE projects SET staff_chat_id = ? WHERE id = ?",
-                (staff_chat_id, project_id),
-            )
-        conn.commit()
+            conn.commit()
         conn.close()
 
     def delete_project(self, project_id):
@@ -196,7 +214,8 @@ class Database:
     def get_ticket_by_db_id(self, db_id):
         conn = get_connection()
         row = conn.execute(
-            """SELECT t.*, p.name as project_name, p.staff_chat_id
+            """SELECT t.*, p.name as project_name, p.primary_color as project_color,
+                      p.site_name as project_site_name, p.logo_url as project_logo_url
                FROM tickets t LEFT JOIN projects p ON t.project_id = p.id
                WHERE t.id = ?""",
             (db_id,),
@@ -207,7 +226,7 @@ class Database:
     def get_ticket_by_ticket_id(self, ticket_id):
         conn = get_connection()
         row = conn.execute(
-            """SELECT t.*, p.name as project_name, p.staff_chat_id
+            """SELECT t.*, p.name as project_name, p.primary_color as project_color
                FROM tickets t LEFT JOIN projects p ON t.project_id = p.id
                WHERE t.ticket_id = ?""",
             (ticket_id,),
@@ -230,7 +249,7 @@ class Database:
     def get_active_ticket_for_user(self, user_telegram_id):
         conn = get_connection()
         row = conn.execute(
-            """SELECT t.*, p.name as project_name, p.staff_chat_id
+            """SELECT t.*, p.name as project_name
                FROM tickets t LEFT JOIN projects p ON t.project_id = p.id
                WHERE t.user_telegram_id = ? AND t.status IN ('open','in_progress')
                ORDER BY t.created_at DESC LIMIT 1""",
@@ -323,20 +342,22 @@ class Database:
         )
         conn.execute(
             """INSERT INTO ticket_messages
-               (ticket_id, sender_type, sender_id, sender_username, message)
-               VALUES (?, 'mod', ?, ?, ?)""",
+               (ticket_id, sender_type, sender_id, sender_username, message, is_internal)
+               VALUES (?, 'mod', ?, ?, ?, 0)""",
             (ticket_db_id, mod_id, mod_username, message),
         )
         conn.commit()
         conn.close()
 
-    def add_message(self, ticket_db_id, sender_type, sender_id, sender_username, message):
+    def add_message(self, ticket_db_id, sender_type, sender_id, sender_username,
+                    message, is_internal=False):
         conn = get_connection()
         conn.execute(
             """INSERT INTO ticket_messages
-               (ticket_id, sender_type, sender_id, sender_username, message)
-               VALUES (?, ?, ?, ?, ?)""",
-            (ticket_db_id, sender_type, sender_id, sender_username, message),
+               (ticket_id, sender_type, sender_id, sender_username, message, is_internal)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (ticket_db_id, sender_type, sender_id, sender_username, message,
+             1 if is_internal else 0),
         )
         conn.execute(
             "UPDATE tickets SET updated_at=datetime('now') WHERE id=?",
@@ -345,10 +366,29 @@ class Database:
         conn.commit()
         conn.close()
 
-    def get_ticket_messages(self, ticket_db_id):
+    def get_ticket_messages(self, ticket_db_id, include_internal=False):
+        conn = get_connection()
+        if include_internal:
+            rows = conn.execute(
+                "SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC",
+                (ticket_db_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT * FROM ticket_messages
+                   WHERE ticket_id = ? AND is_internal = 0
+                   ORDER BY created_at ASC""",
+                (ticket_db_id,),
+            ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_internal_notes(self, ticket_db_id):
         conn = get_connection()
         rows = conn.execute(
-            "SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC",
+            """SELECT * FROM ticket_messages
+               WHERE ticket_id = ? AND is_internal = 1
+               ORDER BY created_at ASC""",
             (ticket_db_id,),
         ).fetchall()
         conn.close()

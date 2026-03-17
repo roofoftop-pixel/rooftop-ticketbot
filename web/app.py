@@ -20,6 +20,12 @@ db = Database()
 
 PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "admin1234")
 
+# Valid roles
+VALID_ROLES = {"admin", "moderator", "dev", "team", "viewer"}
+
+# Roles that can post internal notes
+INTERNAL_ROLES = {"admin", "moderator", "dev", "team"}
+
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
 def login_required(f):
@@ -43,8 +49,25 @@ def admin_required(f):
 
 
 def _session_project_ids():
-    """Lista de project_ids permitidos para el usuario actual. Vacío = todos (admin)."""
     return session.get("project_ids", [])
+
+
+def _can_internal_notes():
+    return session.get("role") in INTERNAL_ROLES
+
+
+def _get_project_theme():
+    """Return theme dict for the current user's project (viewers only)."""
+    pids = _session_project_ids()
+    if pids and session.get("role") != "admin":
+        project = db.get_project(pids[0])
+        if project:
+            return {
+                "primary_color": project.get("primary_color") or "#c9a84c",
+                "site_name": project.get("site_name") or project["name"],
+                "logo_url": project.get("logo_url") or "",
+            }
+    return {"primary_color": "#c9a84c", "site_name": "Support Panel", "logo_url": ""}
 
 
 # ── Telegram helpers ──────────────────────────────────────────────────────────
@@ -70,64 +93,20 @@ def _tg_send(chat_id, text):
         app.logger.warning(f"Telegram sendMessage error: {e}")
 
 
-def _tg_edit(chat_id, message_id, text):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not token or not chat_id or not message_id:
-        return
-    payload = _json.dumps({
-        "chat_id": str(chat_id),
-        "message_id": int(message_id),
-        "text": text,
-        "parse_mode": "Markdown",
-    }).encode()
-    req = _ur.Request(
-        f"https://api.telegram.org/bot{token}/editMessageText",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        _ur.urlopen(req, timeout=10)
-    except Exception as e:
-        app.logger.warning(f"Telegram editMessage error: {e}")
-
-
 _STATUS_USER_MSG = {
-    "open":        "📬 Tu ticket *#{tid}* fue reabierto.",
-    "in_progress": "⚙️ Tu ticket *#{tid}* está siendo atendido por el equipo.",
-    "resolved":    "✅ Tu ticket *#{tid}* fue marcado como *resuelto*. Si el problema persiste, abrí un nuevo ticket.",
-    "unresolved":  "❌ Tu ticket *#{tid}* fue cerrado *sin solución*. El equipo está al tanto.",
-    "closed":      "🔒 Tu ticket *#{tid}* fue cerrado.",
-}
-
-_STATUS_STAFF_LABEL = {
-    "open":        "📬 REABIERTO",
-    "in_progress": "⚙️ EN PROGRESO",
-    "resolved":    "✅ RESUELTO",
-    "unresolved":  "❌ SIN SOLUCIÓN",
-    "closed":      "🔒 CERRADO",
+    "open":        "📬 Ticket *#{tid}* has been reopened. The Roof of Top team is on it.",
+    "in_progress": "⚙️ Ticket *#{tid}* is now being reviewed by our support team. We'll update you shortly.",
+    "resolved":    "✅ Ticket *#{tid}* has been marked as resolved. If the issue persists, open a new ticket and reference this one.",
+    "unresolved":  "❌ Ticket *#{tid}* was closed without resolution. Our team has noted the issue and will work on a fix.",
+    "closed":      "🔒 Ticket *#{tid}* has been closed. Thanks for reaching out to Roof of Top support.",
 }
 
 
 def _notify_status_change(ticket, new_status):
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
     tid = ticket["ticket_id"]
-
-    # Notificar al usuario por Telegram
     user_msg = _STATUS_USER_MSG.get(new_status, "")
     if user_msg:
         _tg_send(ticket["user_telegram_id"], user_msg.replace("{tid}", tid))
-
-    # Editar el mensaje del grupo staff
-    label = _STATUS_STAFF_LABEL.get(new_status, new_status.upper())
-    staff_text = (
-        f"🎫 *Ticket #{tid}* — {label}\n"
-        f"📁 {ticket.get('project_name','?')} · "
-        f"👤 @{ticket.get('username') or ticket['user_telegram_id']}\n\n"
-        f"_{ticket['description'][:150]}_\n\n"
-        f"🕐 {now}"
-    )
-    _tg_edit(ticket.get("staff_chat_id"), ticket.get("staff_message_id"), staff_text)
 
 
 # ── Auth routes ───────────────────────────────────────────────────────────────
@@ -139,7 +118,7 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
-        # Admin login (username vacío o "admin" → PANEL_PASSWORD)
+        # Admin login
         if (not username or username.lower() == "admin") and password == PANEL_PASSWORD:
             session["logged_in"] = True
             session["role"] = "admin"
@@ -147,7 +126,7 @@ def login():
             session["project_ids"] = []
             return redirect(url_for("index"))
 
-        # Viewer login (web_users table)
+        # Web user login
         if username:
             user = db.get_web_user(username)
             from database.db import hash_password
@@ -159,7 +138,7 @@ def login():
                 session["project_ids"] = pids
                 return redirect(url_for("index"))
 
-        error = "Credenciales incorrectas"
+        error = "Invalid credentials"
     return render_template("login.html", error=error)
 
 
@@ -176,9 +155,7 @@ def logout():
 def index():
     pids = _session_project_ids()
     if pids:
-        # Viewer: stats solo de sus proyectos (primer proyecto para simplificar)
         stats = db.get_stats(pids[0] if len(pids) == 1 else None)
-        _, _ = None, None
         recent_tickets, _ = db.get_all_tickets_paginated(
             page=1, per_page=10, allowed_project_ids=pids
         )
@@ -187,8 +164,10 @@ def index():
         stats = db.get_stats()
         recent_tickets, _ = db.get_all_tickets_paginated(page=1, per_page=10)
         projects = db.get_all_projects()
+    theme = _get_project_theme()
     return render_template(
-        "index.html", stats=stats, projects=projects, recent_tickets=recent_tickets
+        "index.html", stats=stats, projects=projects,
+        recent_tickets=recent_tickets, theme=theme,
     )
 
 
@@ -201,7 +180,6 @@ def tickets():
     per_page = 20
     pids = _session_project_ids()
 
-    # Viewers solo ven sus proyectos
     allowed = pids if pids else None
     if allowed and project_id and project_id not in allowed:
         project_id = None
@@ -216,11 +194,12 @@ def tickets():
     else:
         projects = db.get_all_projects()
     total_pages = (total + per_page - 1) // per_page
+    theme = _get_project_theme()
     return render_template(
         "tickets.html",
         tickets=tickets_list, projects=projects,
         page=page, total_pages=total_pages, total=total,
-        project_id=project_id, status=status,
+        project_id=project_id, status=status, theme=theme,
     )
 
 
@@ -233,21 +212,31 @@ def ticket_detail(ticket_db_id):
     pids = _session_project_ids()
     if pids and ticket.get("project_id") not in pids:
         return redirect(url_for("tickets"))
-    return render_template("ticket_detail.html", ticket=ticket)
+    theme = _get_project_theme()
+    can_internal = _can_internal_notes()
+    return render_template(
+        "ticket_detail.html", ticket=ticket, theme=theme,
+        can_internal=can_internal,
+    )
 
 
 @app.route("/projects")
 @admin_required
 def projects():
-    return render_template("projects.html", projects=db.get_all_projects())
+    theme = _get_project_theme()
+    return render_template("projects.html", projects=db.get_all_projects(), theme=theme)
 
 
 @app.route("/users")
 @admin_required
 def users():
-    return render_template("users.html",
-                           web_users=db.get_all_web_users(),
-                           projects=db.get_all_projects())
+    theme = _get_project_theme()
+    return render_template(
+        "users.html",
+        web_users=db.get_all_web_users(),
+        projects=db.get_all_projects(),
+        theme=theme,
+    )
 
 
 # ── Screenshot proxy ──────────────────────────────────────────────────────────
@@ -291,7 +280,6 @@ def update_status(ticket_db_id):
     if not ticket:
         return jsonify({"error": "Not found"}), 404
     db.update_ticket_status(ticket_db_id, status)
-    # Recargar con status actualizado para las notificaciones
     ticket["status"] = status
     _notify_status_change(ticket, status)
     return jsonify({"ok": True})
@@ -316,11 +304,11 @@ def send_message(ticket_db_id):
     message = (request.json or {}).get("message", "").strip()
     if not message:
         return jsonify({"error": "Empty message"}), 400
-    sender_name = f"Admin (web) — {session.get('username','?')}"
+    sender_name = session.get("username", "Team")
     db.add_mod_response(ticket_db_id, "web_admin", sender_name, message)
     _tg_send(
         ticket["user_telegram_id"],
-        f"💬 *Respuesta del moderador — Ticket #{ticket['ticket_id']}:*\n\n{message}",
+        f"💬 *Roof of Top Support — #{ticket['ticket_id']}*\n\n{message}",
     )
     return jsonify({"ok": True})
 
@@ -329,6 +317,33 @@ def send_message(ticket_db_id):
 @login_required
 def get_messages(ticket_db_id):
     return jsonify(db.get_ticket_messages(ticket_db_id))
+
+
+@app.route("/api/ticket/<int:ticket_db_id>/internal", methods=["POST"])
+@login_required
+def send_internal_note(ticket_db_id):
+    if not _can_internal_notes():
+        return jsonify({"error": "Not authorized"}), 403
+    ticket = db.get_ticket_by_db_id(ticket_db_id)
+    if not ticket:
+        return jsonify({"error": "Not found"}), 404
+    message = (request.json or {}).get("message", "").strip()
+    if not message:
+        return jsonify({"error": "Empty message"}), 400
+    sender_name = session.get("username", "Team")
+    role = session.get("role", "")
+    db.add_message(
+        ticket_db_id, role, "web", sender_name, message, is_internal=True
+    )
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ticket/<int:ticket_db_id>/internal", methods=["GET"])
+@login_required
+def get_internal_notes(ticket_db_id):
+    if not _can_internal_notes():
+        return jsonify({"error": "Not authorized"}), 403
+    return jsonify(db.get_internal_notes(ticket_db_id))
 
 
 @app.route("/api/projects", methods=["GET"])
@@ -343,8 +358,10 @@ def api_create_project():
     data = request.json or {}
     project = db.create_project(
         name=data.get("name"),
-        group_chat_id=data.get("group_chat_id"),
-        staff_chat_id=data.get("staff_chat_id"),
+        group_chat_id=data.get("group_chat_id") or None,
+        site_name=data.get("site_name") or None,
+        logo_url=data.get("logo_url") or None,
+        primary_color=data.get("primary_color") or None,
     )
     return jsonify(project)
 
@@ -357,7 +374,9 @@ def api_update_project(project_id):
         project_id=project_id,
         name=data.get("name"),
         group_chat_id=data.get("group_chat_id"),
-        staff_chat_id=data.get("staff_chat_id"),
+        site_name=data.get("site_name"),
+        logo_url=data.get("logo_url"),
+        primary_color=data.get("primary_color"),
     )
     return jsonify({"ok": True})
 
@@ -388,6 +407,8 @@ def api_create_user():
     project_ids = data.get("project_ids", "")
     if not username or not password:
         return jsonify({"error": "Username and password required"}), 400
+    if role not in VALID_ROLES:
+        return jsonify({"error": "Invalid role"}), 400
     if db.get_web_user(username):
         return jsonify({"error": "Username already exists"}), 409
     db.create_web_user(username, password, role, project_ids)
