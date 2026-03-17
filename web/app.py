@@ -105,6 +105,49 @@ def update_status(ticket_db_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/ticket/<int:ticket_db_id>/message", methods=["POST"])
+@login_required
+def send_message(ticket_db_id):
+    ticket = db.get_ticket_by_db_id(ticket_db_id)
+    if not ticket:
+        return jsonify({"error": "Not found"}), 404
+    message = (request.json or {}).get("message", "").strip()
+    if not message:
+        return jsonify({"error": "Empty message"}), 400
+
+    db.add_mod_response(ticket_db_id, "web_admin", "Admin (web)", message)
+
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    user_chat_id = ticket["user_telegram_id"]
+    ticket_id_str = ticket["ticket_id"]
+    if bot_token and user_chat_id:
+        import urllib.request as _ur
+        import urllib.parse as _up
+        import json as _json
+        payload = _json.dumps({
+            "chat_id": user_chat_id,
+            "text": f"💬 *Moderator reply — Ticket #{ticket_id_str}:*\n\n{message}",
+            "parse_mode": "Markdown",
+        }).encode()
+        req = _ur.Request(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            _ur.urlopen(req, timeout=10)
+        except Exception as e:
+            return jsonify({"ok": True, "warn": str(e)})
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ticket/<int:ticket_db_id>/messages", methods=["GET"])
+@login_required
+def get_messages(ticket_db_id):
+    return jsonify(db.get_ticket_messages(ticket_db_id))
+
+
 @app.route("/api/ticket/<int:ticket_db_id>/severity", methods=["POST"])
 @login_required
 def update_severity(ticket_db_id):

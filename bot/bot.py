@@ -400,16 +400,40 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Mod commands ───────────────────────────────────────────────────────────────
 
 async def list_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tickets = db.get_open_tickets()
-    if not tickets:
-        await update.message.reply_text("📭 No open tickets.")
-        return
-    lines = [f"📋 *Open tickets ({len(tickets)}):*\n"]
-    for t in tickets[:15]:
-        lines.append(
-            f"• `#{t['ticket_id']}` {sev_emoji(t.get('severity'))} "
-            f"[{t.get('project_name','?')}] — {status_emoji(t['status'])}\n"
-        )
+    chat = update.effective_chat
+    user = update.effective_user
+
+    # Detectar si es un chat de staff o DM (acceso completo)
+    is_staff = chat.type == "private"
+    if not is_staff and chat.type in ("group", "supergroup"):
+        for p in db.get_all_projects():
+            if p.get("staff_chat_id") and str(chat.id) == str(p["staff_chat_id"]):
+                is_staff = True
+                break
+
+    if is_staff:
+        tickets = db.get_open_tickets()
+        if not tickets:
+            await update.message.reply_text("📭 No open tickets.")
+            return
+        lines = [f"📋 *Open tickets ({len(tickets)}):*\n"]
+        for t in tickets[:15]:
+            lines.append(
+                f"• `#{t['ticket_id']}` {sev_emoji(t.get('severity'))} "
+                f"[{t.get('project_name','?')}] — {status_emoji(t['status'])}\n"
+            )
+    else:
+        tickets = db.get_tickets_by_user(str(user.id))
+        if not tickets:
+            await update.message.reply_text("📭 You have no active tickets. Use /ticket to open one.")
+            return
+        lines = [f"📋 *Your tickets ({len(tickets)}):*\n"]
+        for t in tickets[:10]:
+            lines.append(
+                f"{status_emoji(t['status'])} `#{t['ticket_id']}` {sev_emoji(t.get('severity'))}\n"
+                f"   _{t['description'][:60]}{'...' if len(t['description'])>60 else ''}_\n"
+            )
+
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
@@ -569,6 +593,37 @@ async def handle_set_severity(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+# ── Mensajes libres del usuario (fuera de ConversationHandler) ────────────────
+
+async def handle_user_free_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cuando un usuario escribe al bot en DM sin estar en una conversación activa,
+    reenvía el mensaje al staff del ticket abierto/en progreso."""
+    if update.effective_chat.type != "private":
+        return
+    user = update.effective_user
+    ticket = db.get_active_ticket_for_user(str(user.id))
+    if not ticket:
+        await update.message.reply_text(
+            "No tienes un ticket activo. Usa /ticket para abrir uno."
+        )
+        return
+    text = update.message.text or "[media]"
+    db.add_message(ticket["id"], "user", str(user.id), user.username or user.first_name, text)
+    if ticket.get("staff_chat_id"):
+        try:
+            await context.bot.send_message(
+                chat_id=int(ticket["staff_chat_id"]),
+                text=(
+                    f"💬 *Mensaje de @{user.username or user.first_name}* "
+                    f"— Ticket `#{ticket['ticket_id']}`:\n\n{text}"
+                ),
+                parse_mode="Markdown",
+            )
+        except Exception as e:
+            logger.error(f"Error forwarding user message to staff: {e}")
+    await update.message.reply_text("✅ Mensaje enviado al equipo de soporte.")
+
+
 # ── /addproject ────────────────────────────────────────────────────────────────
 
 async def addproject_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -724,6 +779,14 @@ async def main():
             handle_mod_action,
             pattern=r"^(take|reply|reassign|resolve|unresolved|severity)_",
         )
+    )
+    # Handler de mensajes libres en DM (fuera del ConversationHandler — grupo 1)
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+            handle_user_free_message,
+        ),
+        group=1,
     )
 
     logger.info("Bot starting...")

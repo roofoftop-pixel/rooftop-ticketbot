@@ -270,6 +270,42 @@ class Database:
         conn.commit()
         conn.close()
 
+    def get_active_ticket_for_user(self, user_telegram_id):
+        conn = get_connection()
+        row = conn.execute(
+            """SELECT t.*, p.name as project_name, p.staff_chat_id
+               FROM tickets t LEFT JOIN projects p ON t.project_id = p.id
+               WHERE t.user_telegram_id = ? AND t.status IN ('open','in_progress')
+               ORDER BY t.created_at DESC LIMIT 1""",
+            (user_telegram_id,),
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def add_message(self, ticket_db_id, sender_type, sender_id, sender_username, message):
+        conn = get_connection()
+        conn.execute(
+            """INSERT INTO ticket_messages
+               (ticket_id, sender_type, sender_id, sender_username, message)
+               VALUES (?, ?, ?, ?, ?)""",
+            (ticket_db_id, sender_type, sender_id, sender_username, message),
+        )
+        conn.execute(
+            "UPDATE tickets SET updated_at=datetime('now') WHERE id=?",
+            (ticket_db_id,),
+        )
+        conn.commit()
+        conn.close()
+
+    def get_ticket_messages(self, ticket_db_id):
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC",
+            (ticket_db_id,),
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
     def add_mod_response(self, ticket_db_id, mod_id, mod_username, message):
         conn = get_connection()
         conn.execute(
