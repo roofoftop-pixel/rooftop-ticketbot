@@ -72,13 +72,26 @@
         <div style="text-align:center; color:var(--text-dim); font-size:11px; padding:12px 0;">Loading...</div>
       </div>
       <div style="display:flex; gap:8px; align-items:flex-end;">
-        <textarea id="internalInput" placeholder="Write an internal note..." rows="2"
-          style="flex:1; resize:none; line-height:1.5; border-color:rgba(139,92,246,0.3);"
-          onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){sendInternal();event.preventDefault()}"
-          onfocus="this.style.borderColor='#8b5cf6'" onblur="this.style.borderColor='rgba(139,92,246,0.3)'">
-        </textarea>
+        <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+          <textarea id="internalInput" placeholder="Write an internal note..." rows="2"
+            style="width:100%; resize:none; line-height:1.5; border-color:rgba(139,92,246,0.3);"
+            onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){sendInternal();event.preventDefault()}"
+            onfocus="this.style.borderColor='#8b5cf6'" onblur="this.style.borderColor='rgba(139,92,246,0.3)'">
+          </textarea>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <label style="cursor:pointer; color:var(--text-dim); font-size:11px; display:flex; align-items:center; gap:5px;">
+              <span>📷</span>
+              <input type="file" id="internalPhoto" accept="image/*" style="display:none" onchange="previewInternalPhoto(this)" />
+              <span id="internalPhotoLabel">Attach photo</span>
+            </label>
+            <span id="internalPhotoPreview" style="display:none;">
+              <img id="internalThumb" style="height:32px; border-radius:3px; border:1px solid rgba(139,92,246,0.3);" />
+              <button onclick="clearInternalPhoto()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;margin-left:4px;">✕</button>
+            </span>
+          </div>
+        </div>
         <button class="btn" onclick="sendInternal()"
-          style="white-space:nowrap; border-color:rgba(139,92,246,0.4); color:#8b5cf6;">Note 🔒</button>
+          style="white-space:nowrap; border-color:rgba(139,92,246,0.4); color:#8b5cf6; align-self:flex-start;">Note 🔒</button>
       </div>
       <div style="color:var(--text-dim); font-size:10px; margin-top:6px;">Ctrl+Enter · Internal only — never sent to the user</div>
     </div>
@@ -127,6 +140,17 @@
     <div class="card">
       <div class="section-label">Actions</div>
       <div style="display:flex; flex-direction:column; gap:8px;">
+        {% if can_manage %}
+        {% if not ticket.assigned_mod_username %}
+        <button class="btn btn-accent" style="width:100%; justify-content:center;" onclick="takeTicket()">🙋 Take Ticket</button>
+        {% else %}
+        <div style="font-size:11px; color:var(--text-dim); padding:4px 0;">Assigned to <strong style="color:var(--text);">{{ ticket.assigned_mod_username }}</strong>
+          {% if ticket.assigned_mod_username == session.get('username') %}
+          <button class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="unassignTicket()">Unassign</button>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endif %}
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Change Status</label>
           <select id="statusSelect" style="width:100%;">
@@ -170,6 +194,8 @@
 <script>
 const ticketId = {{ ticket.id }};
 const canInternal = {{ 'true' if can_internal else 'false' }};
+const canManage = {{ 'true' if can_manage else 'false' }};
+const sessionUsername = "{{ session.get('username', '') }}";
 
 function showToast(msg, isError) {
   const t = document.getElementById('toast');
@@ -260,18 +286,43 @@ async function sendReply() {
   }
 }
 
+// ── Take / Unassign ticket ──────────────────────────────────────────────────────
+
+async function takeTicket() {
+  const res = await fetch(`/api/ticket/${ticketId}/assign`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({})
+  });
+  const d = await res.json();
+  d.ok ? (showToast('✅ Ticket assigned to you'), setTimeout(() => location.reload(), 1200))
+       : showToast('⚠️ ' + d.error, true);
+}
+
+async function unassignTicket() {
+  const res = await fetch(`/api/ticket/${ticketId}/assign`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({unassign: true})
+  });
+  const d = await res.json();
+  d.ok ? (showToast('✅ Unassigned'), setTimeout(() => location.reload(), 1200))
+       : showToast('⚠️ ' + d.error, true);
+}
+
 // ── Internal notes ─────────────────────────────────────────────────────────────
 
 function internalBubble(m) {
   const time = (m.created_at || '').slice(0, 16).replace('T', ' ');
   const name = m.sender_username || 'Team';
   const roleLabel = m.sender_type ? ` [${m.sender_type}]` : '';
+  let photoHtml = '';
+  if (m.photo_data) {
+    photoHtml = `<div style="margin-top:6px;"><img src="data:image/jpeg;base64,${m.photo_data}" style="max-width:240px; max-height:200px; border-radius:4px; border:1px solid rgba(139,92,246,0.3); cursor:pointer;" onclick="window.open(this.src,'_blank')" /></div>`;
+  }
+  const msgText = m.message ? `<div style="white-space:pre-wrap; word-break:break-word;">${m.message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>` : '';
   return `
     <div style="display:flex; flex-direction:column; gap:2px;">
       <div style="font-size:10px; color:#8b5cf6; margin-bottom:1px;">🔒 ${name}${roleLabel} · ${time}</div>
-      <div class="internal-note" style="white-space:pre-wrap; word-break:break-word;">
-        ${m.message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-      </div>
+      <div class="internal-note">${msgText}${photoHtml}</div>
     </div>`;
 }
 
@@ -290,19 +341,44 @@ async function loadInternalNotes() {
   thread.scrollTop = thread.scrollHeight;
 }
 
+let internalPhotoBase64 = null;
+
+function previewInternalPhoto(input) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    internalPhotoBase64 = dataUrl.split(',')[1];
+    document.getElementById('internalThumb').src = dataUrl;
+    document.getElementById('internalPhotoPreview').style.display = 'inline-flex';
+    document.getElementById('internalPhotoLabel').textContent = input.files[0].name.slice(0, 20);
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function clearInternalPhoto() {
+  internalPhotoBase64 = null;
+  document.getElementById('internalPhoto').value = '';
+  document.getElementById('internalPhotoPreview').style.display = 'none';
+  document.getElementById('internalPhotoLabel').textContent = 'Attach photo';
+}
+
 async function sendInternal() {
   const input = document.getElementById('internalInput');
   const message = input.value.trim();
-  if (!message) return;
+  if (!message && !internalPhotoBase64) return;
   input.disabled = true;
+  const body = {message};
+  if (internalPhotoBase64) body.photo_data = internalPhotoBase64;
   const res = await fetch(`/api/ticket/${ticketId}/internal`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({message})
+    body: JSON.stringify(body)
   });
   const data = await res.json();
   input.disabled = false;
   if (data.ok) {
     input.value = '';
+    clearInternalPhoto();
     showToast('🔒 Internal note saved');
     await loadInternalNotes();
   } else {

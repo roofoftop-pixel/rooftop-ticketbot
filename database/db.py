@@ -86,6 +86,19 @@ class Database:
                 created_at TEXT DEFAULT (datetime('now')),
                 UNIQUE(project_id, web_user_id)
             );
+            CREATE TABLE IF NOT EXISTS support_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id INTEGER,
+                from_user_id INTEGER,
+                from_username TEXT NOT NULL,
+                from_role TEXT DEFAULT 'team',
+                project_id INTEGER,
+                project_name TEXT,
+                message TEXT,
+                photo_data TEXT,
+                is_read INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
         """)
         conn.commit()
         # Migrations for columns added after initial deploy
@@ -93,10 +106,10 @@ class Database:
             "ALTER TABLE tickets ADD COLUMN screenshot_file_id TEXT",
             "ALTER TABLE tickets ADD COLUMN staff_message_id INTEGER",
             "ALTER TABLE ticket_messages ADD COLUMN is_internal INTEGER DEFAULT 0",
+            "ALTER TABLE ticket_messages ADD COLUMN photo_data TEXT",
             "ALTER TABLE projects ADD COLUMN site_name TEXT",
             "ALTER TABLE projects ADD COLUMN logo_url TEXT",
             "ALTER TABLE projects ADD COLUMN primary_color TEXT DEFAULT '#c9a84c'",
-            # Legacy: keep staff_chat_id column for existing installs
             "ALTER TABLE projects ADD COLUMN staff_chat_id TEXT",
         ]
         for sql in migrations:
@@ -359,14 +372,15 @@ class Database:
         conn.close()
 
     def add_message(self, ticket_db_id, sender_type, sender_id, sender_username,
-                    message, is_internal=False):
+                    message, is_internal=False, photo_data=None):
         conn = get_connection()
         conn.execute(
             """INSERT INTO ticket_messages
-               (ticket_id, sender_type, sender_id, sender_username, message, is_internal)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (ticket_id, sender_type, sender_id, sender_username, message,
+                is_internal, photo_data)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (ticket_db_id, sender_type, sender_id, sender_username, message,
-             1 if is_internal else 0),
+             1 if is_internal else 0, photo_data),
         )
         conn.execute(
             "UPDATE tickets SET updated_at=datetime('now') WHERE id=?",
@@ -542,6 +556,79 @@ class Database:
         conn.execute("DELETE FROM project_members WHERE id = ?", (member_id,))
         conn.commit()
         conn.close()
+
+    # ── SUPPORT MESSAGES ──────────────────────────────────────────────────────
+
+    def create_support_message(self, from_user_id, from_username, from_role,
+                                project_id, project_name, message, photo_data=None,
+                                thread_id=None):
+        conn = get_connection()
+        cur = conn.execute(
+            """INSERT INTO support_messages
+               (thread_id, from_user_id, from_username, from_role,
+                project_id, project_name, message, photo_data)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (thread_id, from_user_id, from_username, from_role,
+             project_id, project_name, message, photo_data),
+        )
+        conn.commit()
+        msg_id = cur.lastrowid
+        conn.close()
+        return msg_id
+
+    def get_support_messages(self, thread_id=None):
+        conn = get_connection()
+        if thread_id is None:
+            # Root messages only
+            rows = conn.execute(
+                """SELECT * FROM support_messages WHERE thread_id IS NULL
+                   ORDER BY created_at DESC"""
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT * FROM support_messages WHERE thread_id = ?
+                   ORDER BY created_at ASC""",
+                (thread_id,),
+            ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_support_message(self, msg_id):
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT * FROM support_messages WHERE id = ?", (msg_id,)
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_unread_support_count(self):
+        conn = get_connection()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM support_messages WHERE is_read = 0 AND thread_id IS NULL"
+        ).fetchone()[0]
+        conn.close()
+        return count
+
+    def mark_support_read(self, msg_id):
+        conn = get_connection()
+        conn.execute(
+            "UPDATE support_messages SET is_read = 1 WHERE id = ? OR thread_id = ?",
+            (msg_id, msg_id),
+        )
+        conn.commit()
+        conn.close()
+
+    def get_user_support_threads(self, from_user_id):
+        """Get all threads started by a specific user (for their contact view)."""
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT * FROM support_messages WHERE thread_id IS NULL
+               AND from_user_id = ?
+               ORDER BY created_at DESC""",
+            (from_user_id,),
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
 
     def get_user_projects_from_members(self, web_user_id):
         conn = get_connection()

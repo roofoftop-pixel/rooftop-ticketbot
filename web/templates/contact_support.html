@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Contact Support{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2 class="page-title">Contact Support</h2>
+  <span class="page-sub">Send a message to the owner</span>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 360px; gap:20px;">
+
+  <!-- New Message Form -->
+  <div>
+    <div class="card">
+      <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:16px;">New Message</div>
+      <div class="form-group">
+        <label class="form-label">Message</label>
+        <textarea id="msgInput" rows="4" placeholder="Describe your issue or question..." style="width:100%; resize:vertical;"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">Attach Photo (optional)</label>
+        <div style="display:flex; align-items:center; gap:12px; margin-top:4px;">
+          <label class="btn btn-sm" style="cursor:pointer; margin:0;">
+            📷 Choose image
+            <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="previewPhoto(this)" />
+          </label>
+          <span id="photoName" style="font-size:11px; color:var(--text-dim);">No file chosen</span>
+          <button id="clearPhotoBtn" onclick="clearPhoto()" style="display:none; background:none; border:none; color:#ef4444; cursor:pointer; font-size:12px;">✕ Remove</button>
+        </div>
+        <div id="photoPreview" style="display:none; margin-top:10px;">
+          <img id="previewImg" style="max-width:200px; max-height:160px; border-radius:4px; border:1px solid var(--border);" />
+        </div>
+      </div>
+      <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn btn-accent" onclick="sendMessage()">Send Message</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Previous Threads -->
+  <div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="padding:14px 16px; border-bottom:1px solid var(--border); font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">
+        Previous Messages
+      </div>
+      {% if my_threads %}
+      <div style="overflow-y:auto; max-height:500px;">
+        {% for t in my_threads %}
+        <div id="my-thread-{{ t.id }}" onclick="openMyThread({{ t.id }}, this)"
+             style="padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.1s;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+            <span style="font-size:11px; color:var(--accent);">{{ t.project_name or '—' }}</span>
+            <span style="font-size:10px; color:var(--text-dim);">{{ t.created_at[:10] if t.created_at else '' }}</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            {% if t.message %}{{ t.message[:55] }}{% elif t.photo_data %}📷 Photo{% else %}—{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state" style="padding:32px;"><div style="font-size:24px;">💬</div><div style="margin-top:8px; font-size:12px;">No previous messages</div></div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- Thread viewer modal -->
+<div class="modal-overlay" id="threadModal">
+  <div class="modal" style="width:560px; max-height:80vh; display:flex; flex-direction:column; padding:0;">
+    <div style="padding:20px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+      <h3 style="font-family:'Syne',sans-serif; font-size:15px; font-weight:700; margin:0;">Thread</h3>
+      <button onclick="closeThreadModal()" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:18px;">✕</button>
+    </div>
+    <div id="modalMessages" style="flex:1; overflow-y:auto; padding:20px 24px; display:flex; flex-direction:column; gap:12px; min-height:200px;">
+    </div>
+    <div style="padding:16px 24px; border-top:1px solid var(--border); display:flex; gap:8px; flex-shrink:0;">
+      <textarea id="modalReplyInput" rows="2" placeholder="Continue the thread..." style="flex:1; resize:none;"
+        onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){sendThreadReply();event.preventDefault()}"></textarea>
+      <button class="btn btn-accent" onclick="sendThreadReply()" style="align-self:flex-end;">Reply ↵</button>
+    </div>
+    <div style="padding:4px 24px 12px; font-size:10px; color:var(--text-dim);">Ctrl+Enter to send</div>
+  </div>
+</div>
+
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--accent); padding:12px 20px; border-radius:6px; font-size:12px; color:var(--accent); z-index:999;"></div>
+
+<script>
+let photoBase64 = null;
+let activeModalThreadId = null;
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = isError ? '#ef4444' : 'var(--accent)';
+  t.style.color = isError ? '#ef4444' : 'var(--accent)';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2500);
+}
+
+function previewPhoto(input) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    photoBase64 = dataUrl.split(',')[1];
+    document.getElementById('previewImg').src = dataUrl;
+    document.getElementById('photoPreview').style.display = 'block';
+    document.getElementById('photoName').textContent = input.files[0].name.slice(0, 28);
+    document.getElementById('clearPhotoBtn').style.display = 'inline';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function clearPhoto() {
+  photoBase64 = null;
+  document.getElementById('photoInput').value = '';
+  document.getElementById('photoPreview').style.display = 'none';
+  document.getElementById('photoName').textContent = 'No file chosen';
+  document.getElementById('clearPhotoBtn').style.display = 'none';
+}
+
+async function sendMessage() {
+  const message = document.getElementById('msgInput').value.trim();
+  if (!message && !photoBase64) {
+    showToast('⚠️ Write a message or attach a photo', true);
+    return;
+  }
+  const body = {};
+  if (message) body.message = message;
+  if (photoBase64) body.photo_data = photoBase64;
+
+  const res = await fetch('/api/support-messages', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const d = await res.json();
+  if (d.ok) {
+    showToast('✅ Message sent');
+    document.getElementById('msgInput').value = '';
+    clearPhoto();
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    showToast('⚠️ ' + d.error, true);
+  }
+}
+
+function msgBubble(m) {
+  const isOwner = m.from_role === 'admin';
+  const align = isOwner ? 'flex-end' : 'flex-start';
+  const bg = isOwner ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface2)';
+  const border = isOwner ? 'color-mix(in srgb, var(--accent) 30%, transparent)' : 'var(--border)';
+  const nameColor = isOwner ? 'var(--accent)' : '#8b5cf6';
+  const name = isOwner ? '⭐ Owner' : m.from_username;
+  const time = (m.created_at || '').slice(0, 16).replace('T', ' ');
+  let content = '';
+  if (m.message) content += `<div style="white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.6;">${m.message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
+  if (m.photo_data) content += `<div style="margin-top:6px;"><img src="data:image/jpeg;base64,${m.photo_data}" style="max-width:240px; max-height:200px; border-radius:4px; cursor:pointer;" onclick="window.open(this.src,'_blank')" /></div>`;
+  return `
+    <div style="display:flex; flex-direction:column; align-items:${align}; gap:2px;">
+      <div style="font-size:10px; color:${nameColor};">${name} · ${time}</div>
+      <div style="background:${bg}; border:1px solid ${border}; border-radius:6px; padding:8px 12px; max-width:85%;">${content}</div>
+    </div>`;
+}
+
+async function openMyThread(threadId, el) {
+  activeModalThreadId = threadId;
+  const res = await fetch(`/api/support-messages/${threadId}/thread`);
+  const data = await res.json();
+  if (!data.ok) return;
+  document.getElementById('modalMessages').innerHTML = data.messages.map(msgBubble).join('');
+  const msgDiv = document.getElementById('modalMessages');
+  msgDiv.scrollTop = msgDiv.scrollHeight;
+  document.getElementById('threadModal').classList.add('open');
+}
+
+function closeThreadModal() {
+  document.getElementById('threadModal').classList.remove('open');
+  activeModalThreadId = null;
+}
+
+async function sendThreadReply() {
+  if (!activeModalThreadId) return;
+  const input = document.getElementById('modalReplyInput');
+  const message = input.value.trim();
+  if (!message) return;
+  input.disabled = true;
+  const res = await fetch(`/api/support-messages/${activeModalThreadId}/reply`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({message})
+  });
+  const d = await res.json();
+  input.disabled = false;
+  if (d.ok) {
+    input.value = '';
+    showToast('✅ Reply sent');
+    // Refresh thread
+    const res2 = await fetch(`/api/support-messages/${activeModalThreadId}/thread`);
+    const data = await res2.json();
+    if (data.ok) {
+      document.getElementById('modalMessages').innerHTML = data.messages.map(msgBubble).join('');
+      document.getElementById('modalMessages').scrollTop = 99999;
+    }
+  } else {
+    showToast('⚠️ ' + d.error, true);
+  }
+}
+
+document.getElementById('threadModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('threadModal')) closeThreadModal();
+});
+</script>
+{% endblock %}

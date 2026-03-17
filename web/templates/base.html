@@ -298,20 +298,27 @@
     <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
       <span class="nav-icon">◈</span> Dashboard
     </a>
-    <a href="/tickets" class="nav-item {% if '/tickets' in request.path and '/ticket/' not in request.path %}active{% endif %}">
-      <span class="nav-icon">◉</span> Tickets
-    </a>
     {% if session.get('role') == 'admin' %}
     <a href="/projects" class="nav-item {% if '/projects' in request.path and '/project/' not in request.path %}active{% endif %}">
       <span class="nav-icon">◎</span> Projects
     </a>
-    <a href="/users" class="nav-item {% if '/users' in request.path %}active{% endif %}">
-      <span class="nav-icon">◐</span> Team
+    <a href="/support" class="nav-item {% if request.path == '/support' %}active{% endif %}">
+      <span class="nav-icon">✉</span> Support Messages
+      {% set unread = unread_support_count if unread_support_count is defined else 0 %}
+      {% if unread %}<span style="background:var(--accent);color:#000;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:auto;">{{ unread }}</span>{% endif %}
     </a>
     {% else %}
+    <a href="/tickets" class="nav-item {% if '/tickets' in request.path and '/ticket/' not in request.path %}active{% endif %}">
+      <span class="nav-icon">◉</span> Tickets
+    </a>
     <a href="/members" class="nav-item {% if request.path == '/members' %}active{% endif %}">
       <span class="nav-icon">◐</span> Members
     </a>
+    {% if session.get('role') in ('team', 'dev') %}
+    <a href="/contact-support" class="nav-item {% if request.path == '/contact-support' %}active{% endif %}">
+      <span class="nav-icon">📡</span> Contact Support
+    </a>
+    {% endif %}
     {% endif %}
     <div class="sidebar-footer">
       <div style="color:var(--text-dim); font-size:10px; padding: 0 0 8px 0; letter-spacing:0.05em;">
