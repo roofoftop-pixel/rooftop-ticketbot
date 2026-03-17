@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Members — {{ project.site_name or project.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2 class="page-title">Members</h2>
+  <span class="page-sub">{{ project.site_name or project.name }}</span>
+  {% if can_manage %}
+  <button class="btn btn-accent" onclick="openAddMember()" style="margin-left:auto;">+ Add Member</button>
+  {% endif %}
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  {% if members %}
+  <table>
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Added</th>
+        {% if can_manage %}<th>Actions</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for m in members %}
+    <tr>
+      <td style="font-weight:600; color:var(--text);">{{ m.username }}</td>
+      <td><span class="badge badge-role-{{ m.role }}">{{ m.role }}</span></td>
+      <td style="color:var(--text-dim); font-size:11px;">{{ m.created_at[:10] if m.created_at else '—' }}</td>
+      {% if can_manage %}
+      <td>
+        <button class="btn btn-sm" onclick="openEditMember({{ m.id }}, '{{ m.username }}', '{{ m.role }}')">✏️ Role</button>
+        <button class="btn btn-sm btn-danger" onclick="removeMember({{ m.id }}, '{{ m.username }}')">✕</button>
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="big">👥</div>
+    <div>No members assigned to this project yet.</div>
+    {% if can_manage %}
+    <button class="btn btn-accent" onclick="openAddMember()" style="margin-top:16px;">+ Add First Member</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if can_manage %}
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="memberModal">
+  <div class="modal">
+    <h3 id="memberModalTitle">Add Member</h3>
+    <input type="hidden" id="editMemberId" value="" />
+    <div id="credentialsGroup">
+      <div class="form-group">
+        <label class="form-label">Username *</label>
+        <input type="text" id="mUsername" placeholder="e.g. alice_mod" style="width:100%" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password *</label>
+        <input type="password" id="mPassword" placeholder="••••••••" style="width:100%" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <select id="mRole" style="width:100%">
+        <option value="moderator">Moderator — respond to tickets, manage cases</option>
+        <option value="dev">Dev — view tickets, internal notes</option>
+        <option value="viewer">Viewer — read-only access</option>
+      </select>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="saveMember()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--accent); padding:12px 20px; border-radius:6px; font-size:12px; color:var(--accent); z-index:999;"></div>
+
+<script>
+const PROJECT_ID = {{ project.id }};
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = isError ? '#ef4444' : 'var(--accent)';
+  t.style.color = isError ? '#ef4444' : 'var(--accent)';
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; location.reload(); }, 1600);
+}
+
+function openAddMember() {
+  document.getElementById('memberModalTitle').textContent = 'Add Member';
+  document.getElementById('editMemberId').value = '';
+  document.getElementById('mUsername').value = '';
+  document.getElementById('mPassword').value = '';
+  document.getElementById('mRole').value = 'moderator';
+  document.getElementById('credentialsGroup').style.display = 'block';
+  document.getElementById('memberModal').classList.add('open');
+}
+
+function openEditMember(id, username, role) {
+  document.getElementById('memberModalTitle').textContent = `Edit role — ${username}`;
+  document.getElementById('editMemberId').value = id;
+  document.getElementById('mRole').value = role;
+  document.getElementById('credentialsGroup').style.display = 'none';
+  document.getElementById('memberModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('memberModal').classList.remove('open');
+}
+
+async function saveMember() {
+  const memberId = document.getElementById('editMemberId').value;
+  const role = document.getElementById('mRole').value;
+
+  if (memberId) {
+    const res = await fetch(`/api/project/${PROJECT_ID}/members/${memberId}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({role})
+    });
+    const d = await res.json();
+    d.ok ? showToast('✅ Role updated') : showToast('⚠️ ' + d.error, true);
+  } else {
+    const username = document.getElementById('mUsername').value.trim();
+    const password = document.getElementById('mPassword').value;
+    if (!username || !password) { alert('Username and password are required.'); return; }
+    const res = await fetch(`/api/project/${PROJECT_ID}/members`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({username, password, role})
+    });
+    const d = await res.json();
+    d.ok ? showToast('✅ Member added') : showToast('⚠️ ' + d.error, true);
+  }
+}
+
+async function removeMember(id, username) {
+  if (!confirm(`Remove ${username} from this project?`)) return;
+  const res = await fetch(`/api/project/${PROJECT_ID}/members/${id}`, { method: 'DELETE' });
+  const d = await res.json();
+  d.ok ? showToast('✅ Member removed') : showToast('⚠️ ' + d.error, true);
+}
+
+document.getElementById('memberModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('memberModal')) closeModal();
+});
+</script>
+{% endif %}
+{% endblock %}

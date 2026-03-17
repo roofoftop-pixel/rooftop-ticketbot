@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}{{ project.site_name or project.name }}{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  {% if is_admin %}
+  <a href="/projects" style="color:var(--text-dim); font-size:12px;">← Projects</a>
+  {% endif %}
+  <div style="display:flex; align-items:center; gap:10px;">
+    {% if project.logo_url %}
+      <img src="{{ project.logo_url }}" style="height:28px; width:28px; object-fit:cover; border-radius:4px;" onerror="this.style.display='none'" />
+    {% endif %}
+    <h2 class="page-title" style="color:{{ project.primary_color or 'var(--accent)' }}">
+      {{ project.site_name or project.name }}
+    </h2>
+  </div>
+  {% if project.site_name and project.site_name != project.name %}
+    <span class="page-sub">{{ project.name }}</span>
+  {% endif %}
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" style="margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="stat-label">Total</div>
+    <div class="stat-value" style="color:var(--text)">{{ stats.total or 0 }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Open</div>
+    <div class="stat-value" style="color:#3b82f6">{{ stats.open_count or 0 }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">In Progress</div>
+    <div class="stat-value" style="color:#eab308">{{ stats.in_progress_count or 0 }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Resolved</div>
+    <div class="stat-value" style="color:#22c55e">{{ stats.resolved_count or 0 }}</div>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 360px; gap:20px;">
+
+  <!-- LEFT: Recent Tickets -->
+  <div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Recent Tickets</div>
+        <a href="/tickets?project_id={{ project.id }}" class="btn btn-sm">View all →</a>
+      </div>
+      {% if recent_tickets %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>User</th><th>Severity</th><th>Status</th><th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in recent_tickets %}
+        <tr style="cursor:pointer" onclick="location.href='/ticket/{{ t.id }}'">
+          <td class="tkt-id">#{{ t.ticket_id }}</td>
+          <td style="color:var(--text-dim)">@{{ t.username or t.user_telegram_id }}</td>
+          <td><span class="sev-dot sev-{{ t.severity or 'none' }}"></span>{{ t.severity or '—' }}</td>
+          <td><span class="badge badge-{{ t.status }}">{{ t.status }}</span></td>
+          <td style="color:var(--text-dim); font-size:11px;">{{ t.created_at[:10] if t.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state"><div class="big">🎫</div><div>No tickets yet</div></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- RIGHT: Members -->
+  <div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em;">Members</div>
+        {% if can_manage %}
+        <button class="btn btn-sm btn-accent" onclick="openAddMember()">+ Add</button>
+        {% endif %}
+      </div>
+
+      {% if members %}
+      <div style="padding:4px 0;">
+        {% for m in members %}
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 20px; border-bottom:1px solid var(--border);">
+          <div>
+            <div style="font-size:12px; font-weight:600; color:var(--text);">{{ m.username }}</div>
+            <span class="badge badge-role-{{ m.role }}" style="margin-top:3px;">{{ m.role }}</span>
+          </div>
+          {% if can_manage %}
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-sm" onclick="openEditMember({{ m.id }}, '{{ m.username }}', '{{ m.role }}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="removeMember({{ m.id }}, '{{ m.username }}')">✕</button>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state" style="padding:32px;">
+        <div style="font-size:24px; margin-bottom:8px;">👥</div>
+        <div style="font-size:12px;">No members assigned yet.</div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if is_admin %}
+    <!-- Project info card -->
+    <div class="card" style="margin-top:16px;">
+      <div style="font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:12px;">Project Info</div>
+      <div style="font-size:12px; display:flex; flex-direction:column; gap:8px; color:var(--text-dim);">
+        <div><span>Group ID:</span> <code style="color:var(--text);">{{ project.group_chat_id or '—' }}</code></div>
+        <div><span>Color:</span>
+          {% if project.primary_color %}
+          <span style="display:inline-flex;align-items:center;gap:5px;">
+            <span style="width:12px;height:12px;border-radius:50%;background:{{ project.primary_color }};display:inline-block;"></span>
+            <code style="color:var(--text);">{{ project.primary_color }}</code>
+          </span>
+          {% else %}—{% endif %}
+        </div>
+        <div><span>Logo:</span> {% if project.logo_url %}<a href="{{ project.logo_url }}" target="_blank" style="color:var(--accent);">View ↗</a>{% else %}—{% endif %}</div>
+      </div>
+      <a href="/projects" class="btn btn-sm" style="margin-top:12px;">✏️ Edit project settings</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Add Member Modal -->
+{% if can_manage %}
+<div class="modal-overlay" id="addMemberModal">
+  <div class="modal">
+    <h3 id="memberModalTitle">Add Member</h3>
+    <input type="hidden" id="editMemberId" value="" />
+    <div class="form-group" id="credentialsGroup">
+      <label class="form-label">Username *</label>
+      <input type="text" id="mUsername" placeholder="e.g. alice_mod" style="width:100%" />
+    </div>
+    <div class="form-group" id="passwordGroup">
+      <label class="form-label">Password *</label>
+      <input type="password" id="mPassword" placeholder="••••••••" style="width:100%" />
+      <div style="font-size:10px; color:var(--text-dim); margin-top:4px;">If user already exists, leave blank — existing password will be kept.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <select id="mRole" style="width:100%">
+        <option value="moderator">Moderator</option>
+        <option value="dev">Dev</option>
+        <option value="viewer">Viewer</option>
+        {% if is_admin %}<option value="team">Team</option>{% endif %}
+      </select>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn" onclick="closeAddMember()">Cancel</button>
+      <button class="btn btn-accent" onclick="saveMember()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--accent); padding:12px 20px; border-radius:6px; font-size:12px; color:var(--accent); z-index:999;"></div>
+
+<script>
+const PROJECT_ID = {{ project.id }};
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = isError ? '#ef4444' : 'var(--accent)';
+  t.style.color = isError ? '#ef4444' : 'var(--accent)';
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; location.reload(); }, 1600);
+}
+
+function openAddMember() {
+  document.getElementById('memberModalTitle').textContent = 'Add Member';
+  document.getElementById('editMemberId').value = '';
+  document.getElementById('mUsername').value = '';
+  document.getElementById('mPassword').value = '';
+  document.getElementById('mRole').value = 'moderator';
+  document.getElementById('credentialsGroup').style.display = 'block';
+  document.getElementById('passwordGroup').style.display = 'block';
+  document.getElementById('addMemberModal').classList.add('open');
+}
+
+function openEditMember(id, username, role) {
+  document.getElementById('memberModalTitle').textContent = `Edit — ${username}`;
+  document.getElementById('editMemberId').value = id;
+  document.getElementById('mUsername').value = username;
+  document.getElementById('mPassword').value = '';
+  document.getElementById('mRole').value = role;
+  document.getElementById('credentialsGroup').style.display = 'none';
+  document.getElementById('passwordGroup').style.display = 'none';
+  document.getElementById('addMemberModal').classList.add('open');
+}
+
+function closeAddMember() {
+  document.getElementById('addMemberModal').classList.remove('open');
+}
+
+async function saveMember() {
+  const memberId = document.getElementById('editMemberId').value;
+  const role = document.getElementById('mRole').value;
+
+  if (memberId) {
+    // Update role
+    const res = await fetch(`/api/project/${PROJECT_ID}/members/${memberId}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({role})
+    });
+    const d = await res.json();
+    d.ok ? showToast('✅ Role updated') : showToast('⚠️ ' + d.error, true);
+  } else {
+    // Add new
+    const username = document.getElementById('mUsername').value.trim();
+    const password = document.getElementById('mPassword').value;
+    if (!username || !password) { alert('Username and password are required.'); return; }
+    const res = await fetch(`/api/project/${PROJECT_ID}/members`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({username, password, role})
+    });
+    const d = await res.json();
+    d.ok ? showToast('✅ Member added') : showToast('⚠️ ' + d.error, true);
+  }
+}
+
+async function removeMember(id, username) {
+  if (!confirm(`Remove ${username} from this project?`)) return;
+  const res = await fetch(`/api/project/${PROJECT_ID}/members/${id}`, { method: 'DELETE' });
+  const d = await res.json();
+  d.ok ? showToast('✅ Member removed', false) : showToast('⚠️ ' + d.error, true);
+}
+
+document.getElementById('addMemberModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('addMemberModal')) closeAddMember();
+});
+</script>
+{% endif %}
+{% endblock %}

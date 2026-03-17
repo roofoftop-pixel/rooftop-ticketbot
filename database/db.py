@@ -77,6 +77,15 @@ class Database:
                 project_ids TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS project_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id),
+                web_user_id INTEGER NOT NULL REFERENCES web_users(id),
+                role TEXT NOT NULL DEFAULT 'moderator',
+                added_by TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(project_id, web_user_id)
+            );
         """)
         conn.commit()
         # Migrations for columns added after initial deploy
@@ -480,5 +489,65 @@ class Database:
     def delete_web_user(self, user_id):
         conn = get_connection()
         conn.execute("DELETE FROM web_users WHERE id = ?", (user_id,))
+        conn.execute("DELETE FROM project_members WHERE web_user_id = ?", (user_id,))
         conn.commit()
         conn.close()
+
+    # ── PROJECT MEMBERS ───────────────────────────────────────────────────────
+
+    def get_project_members(self, project_id):
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT pm.*, wu.username
+               FROM project_members pm
+               JOIN web_users wu ON pm.web_user_id = wu.id
+               WHERE pm.project_id = ?
+               ORDER BY pm.created_at ASC""",
+            (project_id,),
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_project_member(self, project_id, web_user_id):
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT * FROM project_members WHERE project_id = ? AND web_user_id = ?",
+            (project_id, web_user_id),
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def add_project_member(self, project_id, web_user_id, role, added_by=""):
+        conn = get_connection()
+        conn.execute(
+            """INSERT OR REPLACE INTO project_members
+               (project_id, web_user_id, role, added_by)
+               VALUES (?, ?, ?, ?)""",
+            (project_id, web_user_id, role, added_by),
+        )
+        conn.commit()
+        conn.close()
+
+    def update_project_member_role(self, member_id, role):
+        conn = get_connection()
+        conn.execute(
+            "UPDATE project_members SET role = ? WHERE id = ?",
+            (role, member_id),
+        )
+        conn.commit()
+        conn.close()
+
+    def remove_project_member(self, member_id):
+        conn = get_connection()
+        conn.execute("DELETE FROM project_members WHERE id = ?", (member_id,))
+        conn.commit()
+        conn.close()
+
+    def get_user_projects_from_members(self, web_user_id):
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT project_id FROM project_members WHERE web_user_id = ?",
+            (web_user_id,),
+        ).fetchall()
+        conn.close()
+        return [r["project_id"] for r in rows]

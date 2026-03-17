@@ -1,8 +1,9 @@
 import os
 import sys
+import csv
+import io
 import json as _json
 import urllib.request as _ur
-import urllib.parse as _up
 from functools import wraps
 from datetime import datetime
 
@@ -20,11 +21,10 @@ db = Database()
 
 PANEL_PASSWORD = os.environ.get("PANEL_PASSWORD", "admin1234")
 
-# Valid roles
 VALID_ROLES = {"admin", "moderator", "dev", "team", "viewer"}
-
-# Roles that can post internal notes
 INTERNAL_ROLES = {"admin", "moderator", "dev", "team"}
+# Roles a Team member can assign (can't create admins or other teams)
+TEAM_ASSIGNABLE_ROLES = {"moderator", "dev", "viewer"}
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
@@ -56,8 +56,16 @@ def _can_internal_notes():
     return session.get("role") in INTERNAL_ROLES
 
 
+def _can_manage_members(project_id):
+    """True if current user can manage members of this project."""
+    if session.get("role") == "admin":
+        return True
+    if session.get("role") == "team":
+        return project_id in _session_project_ids()
+    return False
+
+
 def _get_project_theme():
-    """Return theme dict for the current user's project (viewers only)."""
     pids = _session_project_ids()
     if pids and session.get("role") != "admin":
         project = db.get_project(pids[0])
@@ -67,7 +75,7 @@ def _get_project_theme():
                 "site_name": project.get("site_name") or project["name"],
                 "logo_url": project.get("logo_url") or "",
             }
-    return {"primary_color": "#c9a84c", "site_name": "Support Panel", "logo_url": ""}
+    return {"primary_color": "#c9a84c", "site_name": "Roof of Top", "logo_url": ""}
 
 
 # ── Telegram helpers ──────────────────────────────────────────────────────────
@@ -94,19 +102,23 @@ def _tg_send(chat_id, text):
 
 
 _STATUS_USER_MSG = {
-    "open":        "📬 Ticket *#{tid}* has been reopened. The Roof of Top team is on it.",
-    "in_progress": "⚙️ Ticket *#{tid}* is now being reviewed by our support team. We'll update you shortly.",
-    "resolved":    "✅ Ticket *#{tid}* has been marked as resolved. If the issue persists, open a new ticket and reference this one.",
-    "unresolved":  "❌ Ticket *#{tid}* was closed without resolution. Our team has noted the issue and will work on a fix.",
-    "closed":      "🔒 Ticket *#{tid}* has been closed. Thanks for reaching out to Roof of Top support.",
+    "open":        "📬 Ticket *#{tid}* has been reopened. The {project} team is on it.",
+    "in_progress": "⚙️ Ticket *#{tid}* is now being reviewed by the {project} team. We'll update you shortly.",
+    "resolved":    "✅ Ticket *#{tid}* has been resolved. If the issue persists, open a new ticket and reference this one.",
+    "unresolved":  "❌ Ticket *#{tid}* was closed without resolution. The {project} team has noted the issue.",
+    "closed":      "🔒 Ticket *#{tid}* has been closed. Thanks for reaching out to {project} support.",
 }
 
 
 def _notify_status_change(ticket, new_status):
     tid = ticket["ticket_id"]
+    project = ticket.get("project_name") or "Support"
     user_msg = _STATUS_USER_MSG.get(new_status, "")
     if user_msg:
-        _tg_send(ticket["user_telegram_id"], user_msg.replace("{tid}", tid))
+        _tg_send(
+            ticket["user_telegram_id"],
+            user_msg.replace("{tid}", tid).replace("{project}", project),
+        )
 
 
 # ── Auth routes ───────────────────────────────────────────────────────────────
@@ -118,24 +130,27 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
-        # Admin login
         if (not username or username.lower() == "admin") and password == PANEL_PASSWORD:
             session["logged_in"] = True
             session["role"] = "admin"
             session["username"] = "admin"
+            session["user_id"] = 0
             session["project_ids"] = []
             return redirect(url_for("index"))
 
-        # Web user login
         if username:
             user = db.get_web_user(username)
             from database.db import hash_password
             if user and user["password_hash"] == hash_password(password):
-                pids = [int(x) for x in user["project_ids"].split(",") if x.strip()]
+                # Merge legacy project_ids + project_members
+                legacy = [int(x) for x in user["project_ids"].split(",") if x.strip()]
+                from_members = db.get_user_projects_from_members(user["id"])
+                all_pids = list(set(legacy + from_members))
                 session["logged_in"] = True
                 session["role"] = user["role"]
                 session["username"] = user["username"]
-                session["project_ids"] = pids
+                session["user_id"] = user["id"]
+                session["project_ids"] = all_pids
                 return redirect(url_for("index"))
 
         error = "Invalid credentials"
@@ -154,6 +169,7 @@ def logout():
 @login_required
 def index():
     pids = _session_project_ids()
+    is_admin = session.get("role") == "admin"
     if pids:
         stats = db.get_stats(pids[0] if len(pids) == 1 else None)
         recent_tickets, _ = db.get_all_tickets_paginated(
@@ -167,7 +183,7 @@ def index():
     theme = _get_project_theme()
     return render_template(
         "index.html", stats=stats, projects=projects,
-        recent_tickets=recent_tickets, theme=theme,
+        recent_tickets=recent_tickets, theme=theme, is_admin=is_admin,
     )
 
 
@@ -189,10 +205,7 @@ def tickets():
         project_id=project_id, status=status,
         allowed_project_ids=allowed,
     )
-    if pids:
-        projects = [p for p in db.get_all_projects() if p["id"] in pids]
-    else:
-        projects = db.get_all_projects()
+    projects = [p for p in db.get_all_projects() if p["id"] in pids] if pids else db.get_all_projects()
     total_pages = (total + per_page - 1) // per_page
     theme = _get_project_theme()
     return render_template(
@@ -200,6 +213,54 @@ def tickets():
         tickets=tickets_list, projects=projects,
         page=page, total_pages=total_pages, total=total,
         project_id=project_id, status=status, theme=theme,
+    )
+
+
+@app.route("/tickets/export")
+@login_required
+def export_tickets():
+    pids = _session_project_ids()
+    project_id = request.args.get("project_id", type=int)
+    status = request.args.get("status")
+
+    allowed = pids if pids else None
+    tickets_list, _ = db.get_all_tickets_paginated(
+        page=1, per_page=10000,
+        project_id=project_id, status=status,
+        allowed_project_ids=allowed,
+    )
+
+    def generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            "Ticket ID", "Project", "User", "Description",
+            "Wallet", "Blockchain", "TX Hash", "Screenshot",
+            "Severity", "Status", "Assigned Mod", "Created", "Updated",
+        ])
+        for t in tickets_list:
+            writer.writerow([
+                t.get("ticket_id", ""),
+                t.get("project_name", ""),
+                t.get("username") or t.get("user_telegram_id", ""),
+                t.get("description", ""),
+                t.get("wallet_address", ""),
+                t.get("blockchain", ""),
+                t.get("tx_hash", ""),
+                "Yes" if t.get("has_screenshot") else "No",
+                t.get("severity", ""),
+                t.get("status", ""),
+                t.get("assigned_mod_username", ""),
+                (t.get("created_at") or "")[:16],
+                (t.get("updated_at") or "")[:16],
+            ])
+        return buf.getvalue()
+
+    filename = f"tickets_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+    return Response(
+        generate(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -225,6 +286,54 @@ def ticket_detail(ticket_db_id):
 def projects():
     theme = _get_project_theme()
     return render_template("projects.html", projects=db.get_all_projects(), theme=theme)
+
+
+@app.route("/project/<int:project_id>")
+@login_required
+def project_detail(project_id):
+    """Project detail page: tickets + members. Admin sees all; Team sees their project."""
+    is_admin = session.get("role") == "admin"
+    pids = _session_project_ids()
+    if not is_admin and project_id not in pids:
+        return redirect(url_for("index"))
+    project = db.get_project(project_id)
+    if not project:
+        return redirect(url_for("projects") if is_admin else url_for("index"))
+    stats = db.get_stats(project_id)
+    recent_tickets, _ = db.get_all_tickets_paginated(
+        page=1, per_page=10, project_id=project_id
+    )
+    members = db.get_project_members(project_id)
+    all_users = db.get_all_web_users() if is_admin else []
+    can_manage = _can_manage_members(project_id)
+    theme = _get_project_theme()
+    return render_template(
+        "project_detail.html",
+        project=project, stats=stats,
+        recent_tickets=recent_tickets, members=members,
+        all_users=all_users, can_manage=can_manage,
+        theme=theme, is_admin=is_admin,
+    )
+
+
+@app.route("/members")
+@login_required
+def members_page():
+    """Members view for non-admin users (shows their project's members)."""
+    pids = _session_project_ids()
+    if not pids:
+        return redirect(url_for("index"))
+    project_id = pids[0]
+    project = db.get_project(project_id)
+    members = db.get_project_members(project_id)
+    can_manage = _can_manage_members(project_id)
+    all_users = db.get_all_web_users() if can_manage else []
+    theme = _get_project_theme()
+    return render_template(
+        "members.html",
+        project=project, members=members,
+        can_manage=can_manage, all_users=all_users, theme=theme,
+    )
 
 
 @app.route("/users")
@@ -268,7 +377,7 @@ def ticket_screenshot(ticket_db_id):
         return f"Error: {e}", 500
 
 
-# ── API ───────────────────────────────────────────────────────────────────────
+# ── Ticket API ────────────────────────────────────────────────────────────────
 
 @app.route("/api/ticket/<int:ticket_db_id>/status", methods=["POST"])
 @login_required
@@ -306,9 +415,10 @@ def send_message(ticket_db_id):
         return jsonify({"error": "Empty message"}), 400
     sender_name = session.get("username", "Team")
     db.add_mod_response(ticket_db_id, "web_admin", sender_name, message)
+    project_name = ticket.get("project_name") or "Support"
     _tg_send(
         ticket["user_telegram_id"],
-        f"💬 *Roof of Top Support — #{ticket['ticket_id']}*\n\n{message}",
+        f"💬 *{project_name} Support — #{ticket['ticket_id']}*\n\n{message}",
     )
     return jsonify({"ok": True})
 
@@ -332,9 +442,7 @@ def send_internal_note(ticket_db_id):
         return jsonify({"error": "Empty message"}), 400
     sender_name = session.get("username", "Team")
     role = session.get("role", "")
-    db.add_message(
-        ticket_db_id, role, "web", sender_name, message, is_internal=True
-    )
+    db.add_message(ticket_db_id, role, "web", sender_name, message, is_internal=True)
     return jsonify({"ok": True})
 
 
@@ -345,6 +453,8 @@ def get_internal_notes(ticket_db_id):
         return jsonify({"error": "Not authorized"}), 403
     return jsonify(db.get_internal_notes(ticket_db_id))
 
+
+# ── Projects API ──────────────────────────────────────────────────────────────
 
 @app.route("/api/projects", methods=["GET"])
 @admin_required
@@ -395,7 +505,77 @@ def api_stats():
     return jsonify(db.get_stats(project_id))
 
 
-# ── Users API (admin only) ────────────────────────────────────────────────────
+# ── Project Members API ───────────────────────────────────────────────────────
+
+@app.route("/api/project/<int:project_id>/members", methods=["GET"])
+@login_required
+def api_get_members(project_id):
+    pids = _session_project_ids()
+    if session.get("role") != "admin" and project_id not in pids:
+        return jsonify({"error": "Forbidden"}), 403
+    return jsonify(db.get_project_members(project_id))
+
+
+@app.route("/api/project/<int:project_id>/members", methods=["POST"])
+@login_required
+def api_add_member(project_id):
+    if not _can_manage_members(project_id):
+        return jsonify({"error": "Not authorized"}), 403
+    data = request.json or {}
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+    role = data.get("role", "moderator")
+
+    is_admin_user = session.get("role") == "admin"
+    if not is_admin_user and role not in TEAM_ASSIGNABLE_ROLES:
+        return jsonify({"error": "You can only assign moderator, dev, or viewer roles"}), 400
+    if role not in VALID_ROLES:
+        return jsonify({"error": "Invalid role"}), 400
+    if not username or not password:
+        return jsonify({"error": "Username and password required"}), 400
+
+    # Create web_user if not exists
+    existing = db.get_web_user(username)
+    if existing:
+        web_user_id = existing["id"]
+    else:
+        db.create_web_user(username, password, role, str(project_id))
+        user = db.get_web_user(username)
+        web_user_id = user["id"]
+
+    # Add to project_members
+    db.add_project_member(
+        project_id, web_user_id, role,
+        added_by=session.get("username", "")
+    )
+    return jsonify({"ok": True})
+
+
+@app.route("/api/project/<int:project_id>/members/<int:member_id>", methods=["PUT"])
+@login_required
+def api_update_member(project_id, member_id):
+    if not _can_manage_members(project_id):
+        return jsonify({"error": "Not authorized"}), 403
+    role = (request.json or {}).get("role")
+    is_admin_user = session.get("role") == "admin"
+    if not is_admin_user and role not in TEAM_ASSIGNABLE_ROLES:
+        return jsonify({"error": "You can only assign moderator, dev, or viewer roles"}), 400
+    if role not in VALID_ROLES:
+        return jsonify({"error": "Invalid role"}), 400
+    db.update_project_member_role(member_id, role)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/project/<int:project_id>/members/<int:member_id>", methods=["DELETE"])
+@login_required
+def api_remove_member(project_id, member_id):
+    if not _can_manage_members(project_id):
+        return jsonify({"error": "Not authorized"}), 403
+    db.remove_project_member(member_id)
+    return jsonify({"ok": True})
+
+
+# ── Global Users API (admin only) ────────────────────────────────────────────
 
 @app.route("/api/users", methods=["POST"])
 @admin_required

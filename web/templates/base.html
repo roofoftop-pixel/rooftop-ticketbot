@@ -302,11 +302,15 @@
       <span class="nav-icon">◉</span> Tickets
     </a>
     {% if session.get('role') == 'admin' %}
-    <a href="/projects" class="nav-item {% if '/projects' in request.path %}active{% endif %}">
+    <a href="/projects" class="nav-item {% if '/projects' in request.path and '/project/' not in request.path %}active{% endif %}">
       <span class="nav-icon">◎</span> Projects
     </a>
     <a href="/users" class="nav-item {% if '/users' in request.path %}active{% endif %}">
       <span class="nav-icon">◐</span> Team
+    </a>
+    {% else %}
+    <a href="/members" class="nav-item {% if request.path == '/members' %}active{% endif %}">
+      <span class="nav-icon">◐</span> Members
     </a>
     {% endif %}
     <div class="sidebar-footer">

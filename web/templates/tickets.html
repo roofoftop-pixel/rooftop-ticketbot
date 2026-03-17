@@ -4,6 +4,10 @@
 <div class="page-header">
   <h2 class="page-title">Tickets</h2>
   <span class="page-sub">{{ total }} total</span>
+  <a href="/tickets/export{% if project_id or status %}?{% if project_id %}project_id={{ project_id }}{% endif %}{% if project_id and status %}&{% endif %}{% if status %}status={{ status }}{% endif %}{% endif %}"
+     class="btn btn-sm" style="margin-left:auto;" title="Export to CSV">
+    ↓ Export CSV
+  </a>
 </div>
 
 <div class="filters">

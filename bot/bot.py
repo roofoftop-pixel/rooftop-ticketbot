@@ -278,10 +278,10 @@ async def _do_create_ticket(context, update=None, query=None):
         screenshot_file_id=ud.get("screenshot_file_id"),
     )
     project = db.get_project(ud["project_id"])
+    project_label = project.get("site_name") or project["name"]
     confirmation = (
         f"✅ *Ticket #{ticket['ticket_id']} submitted*\n\n"
-        f"*Project:* {project['name']}\n\n"
-        "The Roof of Top support team will review your case and get back to you shortly. "
+        f"The *{project_label} support team* will review your case and get back to you shortly. "
         "Feel free to reply here with any additional info."
     )
     if update:
